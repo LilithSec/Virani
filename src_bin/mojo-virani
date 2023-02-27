@@ -1,0 +1,29 @@
+#!perl
+
+use Mojolicious::Lite -signatures;
+use Virani;
+
+get '/*foo' => sub ($c) {
+	my $virani = Virani->new_from_conf;
+
+	# make sure we have a API key and it is valid
+	my $apikey=$c->param('apikey');
+	if (!defined($apikey)) {
+		$c->render( text => "No API key given\n", status=>403, );
+		return;
+	}elsif ($apikey ne $virani->{apikey}) {
+		$c->render( text => "Invalid API key\n", status=>403, );
+		return;
+	}
+
+	# make sure the remote IP is allowed
+	my $remote_ip=$c->{tx}{original_remote_address};
+	if (!$virani->check_remote_ip($remote_ip)) {
+		$c->render( text => "IP or subnet not allowed\n", status=>403, );
+		return;
+	}
+
+	$c->render( data => '', status=>200, );
+	};
+
+app->start;

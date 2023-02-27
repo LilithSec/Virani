@@ -3,6 +3,9 @@ package Virani;
 use 5.006;
 use strict;
 use warnings;
+use TOML;
+use File::Slurp;
+use Net::Subnet;
 
 =head1 NAME
 
@@ -10,12 +13,11 @@ Virani - The great new Virani!
 
 =head1 VERSION
 
-Version 0.01
+Version 0.0.1
 
 =cut
 
-our $VERSION = '0.01';
-
+our $VERSION = '0.0.1';
 
 =head1 SYNOPSIS
 
@@ -28,25 +30,130 @@ Perhaps a little code snippet.
     my $foo = Virani->new();
     ...
 
-=head1 EXPORT
+=head1 METHODS
 
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
+=head2 new_from_conf
 
-=head1 SUBROUTINES/METHODS
+Initiates the Virani object from the specified file.
 
-=head2 function1
+    - conf :: The config TOML to use.
+        - Default :: /usr/local/etc/virani.toml
 
 =cut
 
-sub function1 {
+sub new_from_conf {
+	my ( $blank, %opts ) = @_;
+
+	if ( !defined( $opts{conf} ) ) {
+		$opts{conf} = '/usr/local/etc/virani.toml';
+	}
+
+	if ( !-f $opts{conf} ) {
+		die( "'" . $opts{conf} . "' is not a file or does not exist" );
+	}
+
+	my $raw_toml;
+	eval { $raw_toml = read_file( $opts{conf} ); };
+	if ( $@ || !defined($raw_toml) ) {
+		my $error = 'Failed to read config file, "' . $opts{conf} . '"';
+		if ($@) {
+			$error = $error . ' ' . $@;
+		}
+		die($error);
+	}
+
+	my $toml;
+	eval { $toml = from_toml($raw_toml); };
+	if ($@) {
+		die($@);
+	}
+
+	return Virani->new( %{$toml} );
 }
 
-=head2 function2
+=head2 new
+
+
 
 =cut
 
-sub function2 {
+sub new {
+	my ( $blank, %opts ) = @_;
+
+	my $self = {
+		allowed_subnets => [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
+		apikey          => '',
+		default_set     => 'default',
+		sets            => {
+			default => {
+				path     => '/var/log/daemonlogger',
+				regex    => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
+				strptime => '%s'
+			}
+		},
+
+	};
+	bless $self;
+
+	# make sure we have a API key
+	if ( defined( $opts{apikey} ) ) {
+		$self->{apikey} = $opts{apikey};
+	}
+	else {
+		die("$opts{apikey} not set");
+	}
+
+	if ( defined( $opts{allowed_subnets} ) && ref( $opts{allowed_subnets}) eq 'ARRAY' ) {
+		$self->{allowed_subnets} = $opts{allowed_subnets};
+	}
+	elsif ( defined( $opts{allowed_subnets} ) && ref( $opts{allowed_subnets}) ne 'ARRAY' ) {
+		die("$opts{allowed_subnets} defined, but not a array");
+	}
+
+	if ( defined( $opts{default_set} ) ) {
+		$self->{default_set} = $opts{default_set};
+	}
+
+	if ( defined( $opts{set} ) ) {
+		$self->{sets} = $opts{set};
+	}
+
+	return $self;
+}
+
+=head1 check_remote_ip
+
+Checks if the remote IP is allowed or not.
+
+=cut
+
+sub check_remote_ip{
+	my $self=$_[0];
+	my $ip=$_[1];
+
+	if (!defined($ip)) {
+		die("No IP specified");
+	}
+
+	if (!defined( $self->{allowed_subnets}[0]) ) {
+		return 1;
+	}
+
+	my $allowed_subnets;
+	eval{
+		$allowed_subnets=subnet_matcher(@{ $self->{allowed_subnets} });
+	};
+	if ($@) {
+		die('Failed it init subnet matcher... '.$@);
+	}elsif (!defined($allowed_subnets)) {
+		die('Failed it init subnet matcher... sub_matcher returned undef');
+	}
+
+	if ($allowed_subnets->($ip)) {
+		return 1;
+	}
+
+	return 0;
 }
 
 =head1 AUTHOR
@@ -102,4 +209,4 @@ This is free software, licensed under:
 
 =cut
 
-1; # End of Virani
+1;    # End of Virani
