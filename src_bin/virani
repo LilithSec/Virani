@@ -1,0 +1,69 @@
+#!perl
+
+use strict;
+use warnings;
+use Getopt::Long;
+use Virani;
+
+sub version {
+	print "lilith v. 0.2.0\n";
+}
+
+sub help {
+	&version;
+
+	print '
+';
+}
+
+# get the cli optiosn
+my $help    = 0;
+my $version = 0;
+my $bpf     = '';
+my $start;
+my $end;
+my $write = 'out.pcap';
+my $format;
+my $host;
+my $url;
+my $apikey;
+my $set    = 'default';
+my $config = '/usr/local/etc/virani.toml';
+my $tmpdir;
+my $no_cache = 0;
+Getopt::Long::Configure('no_ignore_case');
+Getopt::Long::Configure('bundling');
+GetOptions(
+	'version' => \$version,
+	'v'       => \$version,
+	'help'    => \$help,
+	'h'       => \$help,
+	'b=s'     => \$bpf,
+	's=s'     => \$start,
+	'e=s'     => \$end,
+	'w=s'     => \$write,
+	'f=s'     => \$format,
+	'host=s'  => \$host,
+	'set=s'   => \$set,
+	'nc'      => \$no_cache,
+);
+
+if ( !defined($start) ) {
+	die('No start time set via -s');
+}
+elsif ( !defined($end) ) {
+	die('No start time set via -s');
+}
+
+my $virani = Virani->new_from_conf( conf => $config );
+
+my $start_obj = $virani->timestamp_to_object($start);
+my $end_obj   = $virani->timestamp_to_object($end);
+
+$virani->get_pcap_local(
+	start    => $start_obj,
+	end      => $end_obj,
+	bpf      => $bpf,
+	file     => $write,
+	no_cache => $no_cache,
+);

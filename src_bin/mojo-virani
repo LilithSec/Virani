@@ -23,7 +23,10 @@ get '/*foo' => sub ($c) {
 		return;
 	}
 
+
+
 	$c->render( data => '', status=>200, );
+
 	};
 
 app->start;
