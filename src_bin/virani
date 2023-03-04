@@ -31,6 +31,7 @@ my $set    = 'default';
 my $config = '/usr/local/etc/virani.toml';
 my $tmpdir;
 my $no_cache = 0;
+my $quiet    = 0, my $verbose = 1;
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
@@ -46,6 +47,7 @@ GetOptions(
 	'host=s'  => \$host,
 	'set=s'   => \$set,
 	'nc'      => \$no_cache,
+	'q'       => \$quiet,
 );
 
 if ( !defined($start) ) {
@@ -53,6 +55,10 @@ if ( !defined($start) ) {
 }
 elsif ( !defined($end) ) {
 	die('No start time set via -s');
+}
+
+if ($quiet) {
+	$verbose = 0;
 }
 
 my $virani = Virani->new_from_conf( conf => $config );
@@ -66,4 +72,5 @@ $virani->get_pcap_local(
 	bpf      => $bpf,
 	file     => $write,
 	no_cache => $no_cache,
+	verbose  => $verbose,
 );

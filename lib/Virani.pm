@@ -262,6 +262,12 @@ The return is a hash reference that includes the following keys.
 
     - bpf :: The used BPF.
 
+    - total_size :: The size of all PCAP files checked.
+
+    - failed_size :: The size of the PCAP files that failed.
+
+    - success_size :: the size of the PCAP files that successfully processed
+
 =cut
 
 sub get_pcap_local {
@@ -374,6 +380,11 @@ sub get_pcap_local {
 		success_count => 0,
 		path          => $cache_file,
 		bpf           => $opts{bpf},
+		total_size    => 0,
+		failed_size   => 0,
+		success_size  => 0,
+		tmp_size      => 0,
+		final_size    => 0,
 	};
 
 	if ( $opts{verbose} ) {
@@ -386,8 +397,14 @@ sub get_pcap_local {
 	# the merge command
 	my $to_merge = [ 'mergecap', '-w', $cache_file ];
 	foreach my $pcap ( @{$to_check} ) {
+
+		# get stat info for the file
+		my ( $dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks )
+			= stat($pcap);
+		$to_return->{total_size} += $size;
+
 		if ( $opts{verbose} ) {
-			print 'Processing ' . $pcap . " ...\n";
+			print 'Processing ' . $pcap . ", size=" . $size . " ...\n";
 		}
 
 		my $tmp_file = $cache_file . '-' . $to_return->{pcap_count};
@@ -397,13 +414,21 @@ sub get_pcap_local {
 			verbose => 0
 		);
 		if ($success) {
-			push( @{$to_merge}, $tmp_file );
 			$to_return->{success_count}++;
-			push( @tmp_files, $tmp_file );
+			$to_return->{success_size} += $size;
+			push( @{$to_merge}, $tmp_file );
+			push( @tmp_files,   $tmp_file );
+
+			# get stat info for the tmp file
+			( $dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks )
+				= stat($tmp_file);
+			$to_return->{tmp_size} += $size;
+
 		}
 		else {
 			$to_return->{failed}{$pcap} = $error_message;
 			$to_return->{failed_count}++;
+			$to_return->{failed_size} += $size;
 
 			if ( $opts{verbose} ) {
 				print 'Failed ' . $pcap . " ... " . $error_message . "\n";
@@ -430,8 +455,16 @@ sub get_pcap_local {
 			}
 		}
 		else {
+			# if verbose print different messages if mergecap generated a ouput file or not when it fialed
 			if ( $opts{verbose} ) {
-				print "PCAPs merge failed " . $error_message . "\n";
+				if ( -f $cache_file ) {
+					if ( $opts{verbose} ) {
+						print "PCAPs partially(output file generated) failed " . $error_message . "\n";
+					}
+				}
+				else {
+					print "PCAPs merge completely(output file not generated) failed " . $error_message . "\n";
+				}
 			}
 		}
 
@@ -439,10 +472,31 @@ sub get_pcap_local {
 		foreach my $tmp_file (@tmp_files) {
 			unlink($tmp_file);
 		}
-	}else {
+
+		# don't bother checking size if the file was not generated
+		if ( -f $cache_file ) {
+			my ( $dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks )
+				= stat($cache_file);
+			$to_return->{final_size} = $size;
+		}
+	}
+	else {
 		if ( $opts{verbose} ) {
 			print "No PCAPs to merge.\n";
 		}
+	}
+
+	if ( $opts{verbose} ) {
+		print "PCAP sizes... failed_size="
+			. $to_return->{failed_size}
+			. " success_size="
+			. $to_return->{success_size}
+			. " total_size="
+			. $to_return->{total_size}
+			. " tmp_size="
+			. $to_return->{tmp_size}
+			. " final_size="
+			. $to_return->{final_size} . "\n";
 	}
 
 	if ( $cache_file ne $opts{file} ) {
