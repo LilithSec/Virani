@@ -81,7 +81,7 @@ get '/*foo' => sub ($c) {
 	}
 
 	my $returned;
-	eval { $returned = $virani->get_pcap_local( start => $start_obj, end => $end_obj, bpf => $bpf, verbose => 1, ); };
+	eval { $returned = $virani->get_pcap_local( set=>$set, start => $start_obj, end => $end_obj, bpf => $bpf ); };
 	if ($@) {
 		$c->render( text => "PCAP generation died... please see syslog\n", status => 400, );
 		return;

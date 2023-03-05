@@ -75,4 +75,5 @@ $virani->get_pcap_local(
 	file     => $write,
 	no_cache => $no_cache,
 	verbose  => $verbose,
+	set      => $set,
 );

@@ -676,77 +676,80 @@ sub timestamp_to_object {
 	if ( $string =~ /^\d+$/ ) {
 		$format = '%s';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y-%m-%d %H:%M%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y-%m-%d %H:%M:%S%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y-%m-%dT%H:%M%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y-%m-%dT%H:%M:%S%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y-%m-%dT%H:%M%Z';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y-%m-%d/%H:%M:%S%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y%m%d %H:%M%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y%m%d %H:%M:%S%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /\^d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y%m%dT%H:%M%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y%m%dT%H:%M:%S%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y%m%dT%H:%M%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
 		$format = '%Y%m%d/%H:%M:%S%z';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y-%m-%d %H:%M';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y-%m-%d %H:%M:%S';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y-%m-%dT%H:%M';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y-%m-%dT%H:%M:%S';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y-%m-%dT%H:%M';
 	}
-	elsif ( $string =~ /\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y-%m-%d/%H:%M:%S';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y%m%d %H:%M';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y%m%d %H:%M:%S';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y%m%dT%H:%M';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y%m%dT%H:%M:%S';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y%m%dT%H:%M';
 	}
-	elsif ( $string =~ /\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
+	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
 		$format = '%Y%m%d/%H:%M:%S';
+	}
+	else {
+		die( 'No matching pattern for the timesamp "' . $string . '"' );
 	}
 
 	my $t;
