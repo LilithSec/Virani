@@ -62,6 +62,8 @@ if ($quiet) {
 }
 
 my $virani = Virani->new_from_conf( conf => $config );
+$virani->set_verbose($verbose);
+$virani->set_verbose_to_syslog(0);
 
 my $start_obj = $virani->timestamp_to_object($start);
 my $end_obj   = $virani->timestamp_to_object($end);

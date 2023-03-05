@@ -4,29 +4,91 @@ use Mojolicious::Lite -signatures;
 use Virani;
 
 get '/*foo' => sub ($c) {
+	my $remote_ip = $c->{tx}{original_remote_address};
+
 	my $virani = Virani->new_from_conf;
+	$virani->set_verbose(1);
+	$virani->set_verbose_to_syslog(1);
 
 	# make sure we have a API key and it is valid
-	my $apikey=$c->param('apikey');
-	if (!defined($apikey)) {
-		$c->render( text => "No API key given\n", status=>403, );
-		return;
-	}elsif ($apikey ne $virani->{apikey}) {
-		$c->render( text => "Invalid API key\n", status=>403, );
+	my $apikey = $c->param('apikey');
+	if ( $virani->check_apikey($apikey) ) {
+		$c->render( text => "Invalid API key\n", status => 403, );
+		$virani->verbose( 'alert', 'Failed API key from: ' . $remote_ip );
 		return;
 	}
+	$virani->verbose( 'info', 'API key: ' . $apikey );
+	$virani->verbose( 'info', 'Remote IP: ' . $remote_ip );
 
 	# make sure the remote IP is allowed
-	my $remote_ip=$c->{tx}{original_remote_address};
-	if (!$virani->check_remote_ip($remote_ip)) {
-		$c->render( text => "IP or subnet not allowed\n", status=>403, );
+	if ( !$virani->check_remote_ip($remote_ip) ) {
+		$c->render( text => "IP or subnet not allowed\n", status => 403, );
+		$virani->verbose( 'alert', 'IP or subnet not allowed: ' . $remote_ip );
 		return;
 	}
 
+	# if the set is not specified, use the default
+	my $set = $c->param('set');
+	if ( !defined($set) or $set eq '' ) {
+		$set = $virani->get_default_set;
+	}
+	$virani->verbose( 'info', 'Set: ' . $set );
 
+	# get the start value and make sure it is sane
+	my $start_obj;
+	my $start = $c->param('start');
+	if ( !defined($start) ) {
+		$c->render( text => "No start value specified\n", status => 400, );
+		$virani->verbose( 'err', 'Start time not specified' );
+		return;
+	}
+	eval { $start_obj = $virani->timestamp_to_object($start); };
+	if ( $@ || !defined($start_obj) ) {
+		$c->render( text => "'" . $start . " cound not be parsed'\n", status => 400, );
+		$virani->verbose( 'err', 'Unparsable start time: ' . $start );
+		return;
+	}
 
-	$c->render( data => '', status=>200, );
+	# get the end value and make sure it is sane
+	my $end_obj;
+	my $end = $c->param('end');
+	if ( !defined($end) ) {
+		$c->render( text => "No end value specified\n", status => 400, );
+		$virani->verbose( 'err', 'End time not specified' );
+		return;
+	}
+	eval { $end_obj = $virani->timestamp_to_object($end); };
+	if ( $@ || !defined($end_obj) ) {
+		$c->render( text => "'" . $end . " cound not be parsed'\n", status => 400, );
+		$virani->verbose( 'err', 'Unparsable end time: ' . $end );
+		return;
+	}
 
-	};
+	# make sure the end time comes after the start time
+	if ( $end_obj < $start_obj ) {
+		$c->render( text => "End time before start time\n", status => 400, );
+		$virani->verbose( 'err', 'Start Is After End... start: ' . $start . '    end: ' . $end );
+		return;
+	}
+
+	# get the bpf value and make sure it is vaguely sane
+	my $bpf = $c->param('bpf');
+	eval { $bpf = $virani->bpf_clean; };
+	if ( !defined($bpf) or $bpf eq '' ) {
+		$c->render( text => "BPF not specified or empty\n", status => 400, );
+		$virani->verbose( 'err', 'BPF not specified or blank' );
+		return;
+	}
+
+	my $returned;
+	eval { $returned = $virani->get_pcap_local( start => $start_obj, end => $end_obj, bpf => $bpf, verbose => 1, ); };
+	if ($@) {
+		$c->render( text => "PCAP generation died... please see syslog\n", status => 400, );
+		return;
+	}
+
+	$c->render( data => '', status => 200, );
+
+};
 
 app->start;

@@ -12,6 +12,7 @@ use Digest::MD5 qw(md5_hex);
 use File::Spec;
 use IPC::Cmd qw(run);
 use File::Copy "cp";
+use Sys::Syslog;
 
 =head1 NAME
 
@@ -92,28 +93,23 @@ sub new {
 	my ( $blank, %opts ) = @_;
 
 	my $self = {
-		allowed_subnets => [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
-		apikey          => '',
-		default_set     => 'default',
-		cache           => '/var/cache/virani',
-		sets            => {
+		allowed_subnets   => [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
+		apikey            => '',
+		default_set       => 'default',
+		cache             => '/var/cache/virani',
+		default_regex     => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
+		default_strptime  => '%s',
+		default_max_time  => '3600',
+		verbose_to_syslog => 0,
+		verbose           => 1,
+		sets              => {
 			default => {
-				path     => '/var/log/daemonlogger',
-				regex    => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
-				strptime => '%s'
+				path => '/var/log/daemonlogger',
 			}
 		},
 
 	};
 	bless $self;
-
-	# make sure we have a API key
-	if ( defined( $opts{apikey} ) ) {
-		$self->{apikey} = $opts{apikey};
-	}
-	else {
-		die("$opts{apikey} not set");
-	}
 
 	if ( defined( $opts{allowed_subnets} ) && ref( $opts{allowed_subnets} ) eq 'ARRAY' ) {
 		$self->{allowed_subnets} = $opts{allowed_subnets};
@@ -122,24 +118,63 @@ sub new {
 		die("$opts{allowed_subnets} defined, but not a array");
 	}
 
-	if ( defined( $opts{default_set} ) ) {
-		$self->{default_set} = $opts{default_set};
+	if ( defined( $opts{sets} ) && ref( $opts{sets} ) eq 'HASH' ) {
+		$self->{sets} = $opts{sets};
+	}
+	elsif ( defined( $opts{sets} ) && ref( $opts{allowed_subnets} ) ne 'HASH' ) {
+		die("$opts{sets} defined, but not a hash");
 	}
 
-	if ( defined( $opts{set} ) ) {
-		$self->{sets} = $opts{set};
-	}
-
-	if ( defined( $opts{cache} ) ) {
-		$self->{sets} = $opts{cache};
+	# real in basic values
+	my @real_in = ( 'apikey', 'default_set', 'cache', 'default_max_time', 'verbose_to_syslog', 'verbose' );
+	for my $key (@real_in) {
+		if ( defined( $opts{$key} ) ) {
+			$self->{$key} = $opts{$key};
+		}
 	}
 
 	return $self;
 }
 
+=head1 check_apikey
+
+Checks the API key.
+
+	my $apikey=$c->param('apikey');
+	if (!$virani->check_apikey($apikey)) {
+		$c->render( text => "Invalid API key\n", status=>403, );
+		return;
+	}
+
+=cut
+
+sub check_apikey {
+	my $self   = $_[0];
+	my $apikey = $_[1];
+
+	if ( !defined($apikey) ) {
+		return 0;
+	}
+
+	if ( !defined( $self->{apikey} ) || $self->{apikey} ne '' ) {
+		return 0;
+	}
+
+	if ( $apikey ne $self->{apikey} ) {
+		return 0;
+	}
+
+	return 1;
+}
+
 =head1 check_remote_ip
 
 Checks if the remote IP is allowed or not.
+
+    if ( ! $virani->check_remote_ip( $c->{tx}{original_remote_address} )){
+		$c->render( text => "IP or subnet not allowed\n", status=>403, );
+		return;
+    }
 
 =cut
 
@@ -148,11 +183,11 @@ sub check_remote_ip {
 	my $ip   = $_[1];
 
 	if ( !defined($ip) ) {
-		die("No IP specified");
+		return 0;
 	}
 
 	if ( !defined( $self->{allowed_subnets}[0] ) ) {
-		return 1;
+		return 0;
 	}
 
 	my $allowed_subnets;
@@ -210,6 +245,20 @@ sub bpf_clean {
 	return $string;
 }
 
+=head2 get_default_set
+
+Returns the deefault set to use.
+
+    my $set=$virani->get_default_set;
+
+=cut
+
+sub get_default_set {
+	my ($self) = @_;
+
+	return $self->{default_set};
+}
+
 =head2 get_pcap_local
 
 Generates a PCAP locally and returns the path to it.
@@ -226,8 +275,8 @@ Generates a PCAP locally and returns the path to it.
     - bpf :: The BPF filter to use.
         - Default :: ''
 
-    - set :: The PCAP set to use.
-        - Default :: default
+    - set :: The PCAP set to use. Will use what ever the default is set to if undef or blank.
+        - Default :: $viarni->get_default_set
 
     - file :: The file to output to. If undef it just returns the path to
               the cache file.
@@ -240,9 +289,6 @@ Generates a PCAP locally and returns the path to it.
 
     - auto_no_cache :: If the cache dir is being used and not writeable and a file
                        as been specified, don't die, but just CWD as the scrach dir.
-        - Default :: 1
-
-    - verbose :: Print out what it is doing.
         - Default :: 1
 
 The return is a hash reference that includes the following keys.
@@ -298,12 +344,8 @@ sub get_pcap_local {
 		$opts{auto_no_cache} = 1;
 	}
 
-	if ( !defined( $opts{set} ) ) {
-		$opts{set} = 'default';
-	}
-
-	if ( !defined( $opts{verbose} ) ) {
-		$opts{verbose} = 1;
+	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
+		$opts{set} = $self->get_default_set;
 	}
 
 	# make sure the set exists
@@ -320,11 +362,21 @@ sub get_pcap_local {
 				. '" is not exist or is not a directory' );
 	}
 
+	# apply the padding
+	$opts{start} = $opts{start} - $opts{padding};
+	$opts{end}   = $opts{end} + $opts{padding};
+
 	# clean the bpf
 	$opts{bpf} = $self->bpf_clean( $opts{bpf} );
 
+	#
+	my $set_path = $self->get_set_path( $opts{set} );
+	if ( !defined($set_path) ) {
+		die( 'The set "' . $opts{set} . '" does not either exist or the path value for it is undef' );
+	}
+
 	# get the pcaps
-	my @pcaps = File::Find::Rule->file()->name("*.pcap*")->in( $self->{sets}->{ $opts{set} }{path} );
+	my @pcaps = File::Find::Rule->file()->name("*.pcap*")->in($set_path);
 
 	my $to_check = File::Find::IncludesTimeRange->find(
 		items => \@pcaps,
@@ -368,7 +420,11 @@ sub get_pcap_local {
 		}
 
 		$cache_file
-			= $self->{cache} . '/' . $opts{start}->epoch . '-' . $opts{end}->epoch . "-" . lc( md5_hex( $opts{bpf} ) );
+			= $self->{cache} . '/'
+			. $opts{set} . '-'
+			. $opts{start}->epoch . '-'
+			. $opts{end}->epoch . "-"
+			. lc( md5_hex( $opts{bpf} ) );
 	}
 
 	# The path to return.
@@ -387,9 +443,7 @@ sub get_pcap_local {
 		final_size    => 0,
 	};
 
-	if ( $opts{verbose} ) {
-		print 'BPF: ' . $opts{bpf} . "\n";
-	}
+	$self->verbose( 'info', 'BPF: ' . $opts{bpf} );
 
 	# used for tracking the files to cleanup
 	my @tmp_files;
@@ -403,9 +457,7 @@ sub get_pcap_local {
 			= stat($pcap);
 		$to_return->{total_size} += $size;
 
-		if ( $opts{verbose} ) {
-			print 'Processing ' . $pcap . ", size=" . $size . " ...\n";
-		}
+		$self->verbose( 'info', 'Processing ' . $pcap . ", size=" . $size . " ..." );
 
 		my $tmp_file = $cache_file . '-' . $to_return->{pcap_count};
 
@@ -430,9 +482,7 @@ sub get_pcap_local {
 			$to_return->{failed_count}++;
 			$to_return->{failed_size} += $size;
 
-			if ( $opts{verbose} ) {
-				print 'Failed ' . $pcap . " ... " . $error_message . "\n";
-			}
+			$self->verbose( 'warning', 'Failed ' . $pcap . " ... " . $error_message );
 
 			unlink $tmp_file;
 		}
@@ -442,29 +492,23 @@ sub get_pcap_local {
 
 	# only try merging if we had more than one success
 	if ( $to_return->{success_count} > 0 ) {
-		if ( $opts{verbose} ) {
-			print "Merging PCAPs...\n";
-		}
+
+		$self->verbose( 'info', "Merging PCAPs... " . join( ' ', @{$to_merge} ) );
+
 		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
 			command => $to_merge,
 			verbose => 0
 		);
 		if ($success) {
-			if ( $opts{verbose} ) {
-				print "PCAPs merged into " . $cache_file . "\n";
-			}
+			$self->verbose( 'info', "PCAPs merged into " . $cache_file );
 		}
 		else {
 			# if verbose print different messages if mergecap generated a ouput file or not when it fialed
-			if ( $opts{verbose} ) {
-				if ( -f $cache_file ) {
-					if ( $opts{verbose} ) {
-						print "PCAPs partially(output file generated) failed " . $error_message . "\n";
-					}
-				}
-				else {
-					print "PCAPs merge completely(output file not generated) failed " . $error_message . "\n";
-				}
+			if ( -f $cache_file ) {
+				$self->verbose( 'warning', "PCAPs partially(output file generated) failed " . $error_message );
+			}
+			else {
+				$self->verbose( 'err', "PCAPs merge completely(output file not generated) failed " . $error_message );
 			}
 		}
 
@@ -481,13 +525,11 @@ sub get_pcap_local {
 		}
 	}
 	else {
-		if ( $opts{verbose} ) {
-			print "No PCAPs to merge.\n";
-		}
+		$self->verbose( 'err', "No PCAPs to merge" );
 	}
 
-	if ( $opts{verbose} ) {
-		print "PCAP sizes... failed_size="
+	$self->verbose( 'info',
+			  "PCAP sizes... failed_size="
 			. $to_return->{failed_size}
 			. " success_size="
 			. $to_return->{success_size}
@@ -496,14 +538,79 @@ sub get_pcap_local {
 			. " tmp_size="
 			. $to_return->{tmp_size}
 			. " final_size="
-			. $to_return->{final_size} . "\n";
-	}
+			. $to_return->{final_size} );
 
 	if ( $cache_file ne $opts{file} ) {
 		cp( $cache_file, $opts{file} );
 	}
 
 	return $to_return;
+}
+
+=head2 get_set_path
+
+Returns the path to a set.
+
+If no set is given, the default is used.
+
+Will return undef if the set does not exist or if the set does not have a path defined.
+
+    my $path=$viarni->get_set_path($set);
+
+=cut
+
+sub get_set_path {
+	my ( $self, $set ) = @_;
+
+	if ( !defined($set) ) {
+		$set = $self->get_default_set;
+	}
+
+	if ( !defined( $self->{sets}{$set} ) ) {
+		return undef;
+	}
+
+	if ( !defined( $self->{sets}{$set}{path} ) ) {
+		return undef;
+	}
+
+	return $self->{sets}{$set}{path};
+}
+
+=head2 set_verbose
+
+Set if it should be verbose or not.
+
+    # be verbose
+    $virani->verbose(1);
+
+    # do not be verbose
+    $virani->verbose(0);
+
+=cut
+
+sub set_verbose {
+	my ( $self, $verbose ) = @_;
+
+	$self->{verbose} = $verbose;
+}
+
+=head2 set_verbose_to_syslog
+
+Set if it should be verbose or not.
+
+    # send verbose messages to syslog
+    $viarni->set_verbose_to_syslog(1);
+
+    # do not send verbose messages to syslog
+    $viarni->set_verbose_to_syslog(0);
+
+=cut
+
+sub set_verbose_to_syslog {
+	my ( $self, $to_syslog ) = @_;
+
+	$self->{verbose_to_syslog} = $to_syslog;
 }
 
 =head2 timestamp_to_object
@@ -649,6 +756,48 @@ sub timestamp_to_object {
 	}
 
 	return $t;
+}
+
+=head2 verbose
+
+Prints out error messages. This is inteded to be internal.
+
+Only sends the string if verbose is enabled.
+
+There is no need to add a "\n" as it will automatically if not sending to syslog.
+
+Two variables are taken. The first is level the second is the message. Level is only used
+for syslog. Default level is info.
+
+    - Levels :: emerg, alert, crit, err, warning, notice, info, debug
+
+    $self->verbose('info', 'some string');
+
+=cut
+
+sub verbose {
+	my ( $self, $level, $string ) = @_;
+
+	if ( !defined($string) || $string eq '' ) {
+		return;
+	}
+
+	if ( !defined($level) ) {
+		$level = 'info';
+	}
+
+	if ( $self->{verbose} ) {
+		if ( $self->{verbose_to_syslog} ) {
+			openlog( 'viarni', undef, 'daemon' );
+			syslog( $level, $string );
+			closelog();
+		}
+		else {
+			print $string. "\n";
+		}
+	}
+
+	return;
 }
 
 =head1 AUTHOR
