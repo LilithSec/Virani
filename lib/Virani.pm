@@ -156,7 +156,7 @@ sub check_apikey {
 		return 0;
 	}
 
-	if ( !defined( $self->{apikey} ) || $self->{apikey} ne '' ) {
+	if ( !defined( $self->{apikey} ) || $self->{apikey} eq '' ) {
 		return 0;
 	}
 
@@ -403,6 +403,15 @@ sub get_pcap_local {
 		}
 		elsif ( $opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
 			$cache_file = $opts{file};
+
+		}
+		elsif ( $opts{auto_no_cache} && ( -d $self->{cache} || -w $self->{cache} ) ) {
+			$cache_file
+				= $self->{cache} . '/'
+				. $opts{set} . '-'
+				. $opts{start}->epoch . '-'
+				. $opts{end}->epoch . "-"
+				. lc( md5_hex( $opts{bpf} ) );
 		}
 		elsif ( !$opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
 			die(      '$opts{auto_no_cache} is false and $opts{no_cache} is false, but the cache dir "'
@@ -540,7 +549,8 @@ sub get_pcap_local {
 			. " final_size="
 			. $to_return->{final_size} );
 
-	if ( $cache_file ne $opts{file} ) {
+	if ( defined($opts{file}) && $cache_file ne $opts{file} ) {
+		$self->verbose('info', 'Copying "'.$cache_file.'" to "'.$opts{file}.'"' );
 		cp( $cache_file, $opts{file} );
 	}
 

@@ -3,7 +3,7 @@
 use Mojolicious::Lite -signatures;
 use Virani;
 
-get '/*foo' => sub ($c) {
+get '/*' => sub ($c) {
 	my $remote_ip = $c->{tx}{original_remote_address};
 
 	my $virani = Virani->new_from_conf;
@@ -12,7 +12,7 @@ get '/*foo' => sub ($c) {
 
 	# make sure we have a API key and it is valid
 	my $apikey = $c->param('apikey');
-	if ( $virani->check_apikey($apikey) ) {
+	if ( ! $virani->check_apikey($apikey) ) {
 		$c->render( text => "Invalid API key\n", status => 403, );
 		$virani->verbose( 'alert', 'Failed API key from: ' . $remote_ip );
 		return;
@@ -73,8 +73,8 @@ get '/*foo' => sub ($c) {
 
 	# get the bpf value and make sure it is vaguely sane
 	my $bpf = $c->param('bpf');
-	eval { $bpf = $virani->bpf_clean; };
-	if ( !defined($bpf) or $bpf eq '' ) {
+	eval { $bpf = $virani->bpf_clean($bpf); };
+	if ( !defined($bpf) || $bpf eq '' ) {
 		$c->render( text => "BPF not specified or empty\n", status => 400, );
 		$virani->verbose( 'err', 'BPF not specified or blank' );
 		return;
@@ -84,11 +84,13 @@ get '/*foo' => sub ($c) {
 	eval { $returned = $virani->get_pcap_local( set=>$set, start => $start_obj, end => $end_obj, bpf => $bpf ); };
 	if ($@) {
 		$c->render( text => "PCAP generation died... please see syslog\n", status => 400, );
+		$virani->verbose( 'err', 'get_pcap_local failed: '.$@ );
 		return;
 	}
 
-	$c->render( data => '', status => 200, );
+	$c->reply->file( $returned->{path} );
 
+	return;
 };
 
 app->start;
