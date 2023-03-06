@@ -110,7 +110,8 @@ sub the_stuff {
 	};
 	if ($@) {
 		use File::Slurp;
-		$c->render(data=>read_file( $returned->{path} ));
+		my $raw_pcap=read_file( $returned->{path} );
+		$c->render(data=>$raw_pcap);
 	}
 
 	return;
