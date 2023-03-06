@@ -4,9 +4,12 @@ use strict;
 use warnings;
 use Getopt::Long;
 use Virani;
+use TOML;
+use File::Slurp;
+use Virani::Client;
 
 sub version {
-	print "lilith v. 0.2.0\n";
+	print "viarni v. 0.0.1\n";
 }
 
 sub help {
@@ -24,7 +27,7 @@ my $start;
 my $end;
 my $write = 'out.pcap';
 my $format;
-my $host;
+my $remote;
 my $url;
 my $apikey;
 my $set    = 'default';
@@ -35,19 +38,20 @@ my $quiet    = 0, my $verbose = 1;
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
-	'version' => \$version,
-	'v'       => \$version,
-	'help'    => \$help,
-	'h'       => \$help,
-	'b=s'     => \$bpf,
-	's=s'     => \$start,
-	'e=s'     => \$end,
-	'w=s'     => \$write,
-	'f=s'     => \$format,
-	'host=s'  => \$host,
-	'set=s'   => \$set,
-	'nc'      => \$no_cache,
-	'q'       => \$quiet,
+	'version'  => \$version,
+	'v'        => \$version,
+	'help'     => \$help,
+	'h'        => \$help,
+	'b=s'      => \$bpf,
+	's=s'      => \$start,
+	'e=s'      => \$end,
+	'w=s'      => \$write,
+	'r=s'      => \$remote,
+	'set=s'    => \$set,
+	'nc'       => \$no_cache,
+	'q'        => \$quiet,
+	'url=s'    => \$url,
+	'apikey=s' => \$apikey,
 );
 
 if ( !defined($start) ) {
@@ -61,19 +65,66 @@ if ($quiet) {
 	$verbose = 0;
 }
 
-my $virani = Virani->new_from_conf( conf => $config );
-$virani->set_verbose($verbose);
-$virani->set_verbose_to_syslog(0);
+# handles it if it is not remote
+if ( !$remote ) {
+	my $virani = Virani->new_from_conf( conf => $config );
+	$virani->set_verbose($verbose);
+	$virani->set_verbose_to_syslog(0);
 
-my $start_obj = $virani->timestamp_to_object($start);
-my $end_obj   = $virani->timestamp_to_object($end);
+	my $start_obj = $virani->timestamp_to_object($start);
+	my $end_obj   = $virani->timestamp_to_object($end);
 
-$virani->get_pcap_local(
-	start    => $start_obj,
-	end      => $end_obj,
-	bpf      => $bpf,
-	file     => $write,
-	no_cache => $no_cache,
-	verbose  => $verbose,
-	set      => $set,
-);
+	$virani->get_pcap_local(
+		start    => $start_obj,
+		end      => $end_obj,
+		bpf      => $bpf,
+		file     => $write,
+		no_cache => $no_cache,
+		verbose  => $verbose,
+		set      => $set,
+	);
+}
+else {
+	if (!defined($url) && !defined($apikey)) {
+		print "API key and URL not specified... looking for config ".$remote."\n";
+		if (-f '/usr/local/etc/virani.d/'.$remote.'.toml') {
+			$config='/usr/local/etc/virani.d/'.$remote.'.toml';
+		}elsif(-f 'etc/virani.d/'.$remote.'.toml') {
+			$config='/etc/virani.d/'.$remote.'.toml';
+		}elsif(-f './'.$remote.'.toml') {
+			$config='./'.$remote.'.toml';
+		}elsif(-f $remote ) {
+			$config=$remote;
+		}
+		print 'Config: '.$remote."\n";
+		my $raw_toml;
+        eval { $raw_toml = read_file( $config ); };
+        if ( $@ || !defined($raw_toml) ) {
+			my $error = 'Failed to read config file, "' . $config . '"';
+			if ($@) {
+				$error = $error . ' ' . $@;
+			}
+			die($error);
+        }
+
+        my $toml;
+        eval { $toml = from_toml($raw_toml); };
+        if ($@) {
+			die($@);
+		}
+
+		if (!defined($toml->{apikey})) {
+			die('Config "'.$config.'" does not contain a value for apikey');
+		}elsif(!defined($toml->{url})) {
+			die('Config "'.$config.'" does not contain a value for url');
+		}
+		$apikey=$toml->{apikey};
+		$url=$toml->{url};
+
+	}elsif ( !defined($url) && defined($apikey) ) {
+		die("--apikey and --url must be used in conjuction with each other");
+	}elsif ( defined($url) && !defined($apikey) ) {
+		die("--apikey and --url must be used in conjuction with each other");
+	}
+
+}
