@@ -2,6 +2,7 @@
 
 use Mojolicious::Lite -signatures;
 use Virani;
+use JSON;
 
 # two are needed as /* and / don't overlap... so pass it to the_stuff to actually handle it
 get '/*' => sub ($c) {
@@ -40,7 +41,6 @@ sub the_stuff {
 		return;
 	}
 
-	
 	# if the set is not specified, use the default
 	my $set = $c->param('set');
 	if ( !defined($set) or $set eq '' ) {
@@ -97,21 +97,47 @@ sub the_stuff {
 	}
 
 	my $returned;
-	eval { $returned = $virani->get_pcap_local( set => $set, start => $start_obj, end => $end_obj, bpf => $bpf, tshark=>$tshark ); };
+	eval {
+		$returned = $virani->get_pcap_local(
+			set    => $set,
+			start  => $start_obj,
+			end    => $end_obj,
+			bpf    => $bpf,
+			tshark => $tshark
+		);
+	};
 	if ($@) {
 		$c->render( text => "PCAP generation died... please see syslog\n", status => 400, );
-		$virani->verbose( 'err', 'get_pcap_local failed: ' . $@ );
+
+		#		$virani->verbose( 'err', 'get_pcap_local failed: ' . $@ );
+		return;
+	}
+
+# if there are more than 0 found pcaps and the count is the same as the failed cound, then generation of them all failed
+	if ( $returned->{pcap_count} == $returned->{failed_count} && $returned->{pcap_count} > 0 ) {
+		my $json = JSON->new->allow_nonref->canonical(1)->pretty;
+		$c->render(
+			text => 'All PCAP generation failed. pcap_count: '
+				. $returned->{pcap_count}
+				. ', failed_count: '
+				. $returned->{failed_count} . "\n\n"
+				. $json->encode($returned),
+			status => 400,
+		);
+		$virani->verbose( 'err',
+				  'All PCAP generation failed. pcap_count: '
+				. $returned->{pcap_count}
+				. ', failed_count: '
+				. $returned->{failed_count} );
 		return;
 	}
 
 	# if this fails, it is a old version of Mojolicious
-	eval{
-		$c->reply->file( $returned->{path} );
-	};
+	eval { $c->reply->file( $returned->{path} ); };
 	if ($@) {
 		use File::Slurp;
-		my $raw_pcap=read_file( $returned->{path} );
-		$c->render(data=>$raw_pcap);
+		my $raw_pcap = read_file( $returned->{path} );
+		$c->render( data => $raw_pcap );
 	}
 
 	return;
