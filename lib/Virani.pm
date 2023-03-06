@@ -409,6 +409,22 @@ sub get_pcap_local {
 		regex => $ts_regexp,
 	);
 
+	# figure out if we are using tcpdump or tshark
+	if ( !defined( $opts{tshark} ) ) {
+		$opts{tshark} = $self->{default_tshark};
+		if ( defined( $self->{sets}{ $opts{set} }{tshark} ) ) {
+			$opts{tshark} = $self->{sets}{ $opts{set} }{tshark};
+		}
+	}
+
+	# for sanity sake make sure tshark given this is a perl boolean, make sure it is either 0 or 1
+	if ( $opts{tshark} ) {
+		$opts{tshark} = 1;
+	}
+	else {
+		$opts{tshark} = 0;
+	}
+
 	my $cache_file;
 	if ( defined( $opts{file} ) ) {
 		my ( $volume, $directories, $file ) = File::Spec->splitpath( $opts{file} );
@@ -434,6 +450,7 @@ sub get_pcap_local {
 			$cache_file
 				= $self->{cache} . '/'
 				. $opts{set} . '-'
+				. $opts{tshark} . '-'
 				. $opts{start}->epoch . '-'
 				. $opts{end}->epoch . "-"
 				. lc( md5_hex( $opts{bpf} ) );
@@ -475,20 +492,13 @@ sub get_pcap_local {
 		success_size  => 0,
 		tmp_size      => 0,
 		final_size    => 0,
+		tshark        => $opts{tshark},
 	};
 
 	$self->verbose( 'info', 'BPF: ' . $opts{bpf} );
 
 	# used for tracking the files to cleanup
 	my @tmp_files;
-
-	# figure out if we are using tcpdump or tshark
-	if (!defined($opts{tshark})) {
-		$opts{tshark}=$self->{default_tshark};
-		if (defined( $self->{sets}{$opts{set}}{tshark}  )) {
-			$opts{tshark}=$self->{sets}{$opts{set}}{tshark};
-		}
-	}
 
 	# the merge command
 	my $to_merge = [ 'mergecap', '-w', $cache_file ];
@@ -504,15 +514,16 @@ sub get_pcap_local {
 		my $tmp_file = $cache_file . '-' . $to_return->{pcap_count};
 
 		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf );
-		if (!$opts{tshark}) {
+		if ( !$opts{tshark} ) {
 			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-																					command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
-																					verbose => 0
-																					);
-		}else {
+				command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
+				verbose => 0
+			);
+		}
+		else {
 			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-																					command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
-																					verbose => 0
+				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
+				verbose => 0
 			);
 		}
 		if ($success) {
