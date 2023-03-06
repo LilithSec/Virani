@@ -156,7 +156,7 @@ sub check_apikey {
 	my $self   = $_[0];
 	my $apikey = $_[1];
 
-	if ($self->{auth_by_IP_only}) {
+	if ( $self->{auth_by_IP_only} ) {
 		return 1;
 	}
 
@@ -386,10 +386,20 @@ sub get_pcap_local {
 	# get the pcaps
 	my @pcaps = File::Find::Rule->file()->name("*.pcap*")->in($set_path);
 
+	# get the ts_regexp to use
+	my $ts_regexp;
+	if ( defined( $self->{sets}{ $opts{set} }{regex} ) ) {
+		$ts_regexp = $self->{sets}{ $opts{set} }{regex};
+	}
+	else {
+		$ts_regexp = $self->{default_regex};
+	}
+
 	my $to_check = File::Find::IncludesTimeRange->find(
 		items => \@pcaps,
 		start => $opts{start},
 		end   => $opts{end},
+		regex => $ts_regexp,
 	);
 
 	my $cache_file;
