@@ -104,7 +104,14 @@ sub the_stuff {
 		return;
 	}
 
-	$c->reply->file( $returned->{path} );
+	# if this fails, it is a old version of Mojolicious
+	eval{
+		$c->reply->file( $returned->{path} );
+	};
+	if ($@) {
+		use File::Slurp;
+		$c->render(data=>read_file( $returned->{path} ));
+	}
 
 	return;
 }
