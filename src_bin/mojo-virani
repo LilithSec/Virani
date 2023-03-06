@@ -11,16 +11,19 @@ get '/*' => sub ($c) {
 	$virani->set_verbose_to_syslog(1);
 
 	# make sure we have a API key and it is valid
-	my $apikey = $c->param('apikey');
-	if ( ! $virani->check_apikey($apikey) ) {
-		$c->render( text => "Invalid API key\n", status => 403, );
-		$virani->verbose( 'alert', 'Failed API key from: ' . $remote_ip );
-		return;
+	# only needed if not authing via IP only
+	if (!$virani->{auth_by_IP_only}) {
+		my $apikey = $c->param('apikey');
+		if ( ! $virani->check_apikey($apikey) ) {
+			$c->render( text => "Invalid API key\n", status => 403, );
+			$virani->verbose( 'alert', 'Failed API key from: ' . $remote_ip.', API key: '.$apikey );
+			return;
+		}
+		$virani->verbose( 'info', 'API key: ' . $apikey );
 	}
-	$virani->verbose( 'info', 'API key: ' . $apikey );
-	$virani->verbose( 'info', 'Remote IP: ' . $remote_ip );
 
 	# make sure the remote IP is allowed
+	$virani->verbose( 'info', 'Remote IP: ' . $remote_ip );
 	if ( !$virani->check_remote_ip($remote_ip) ) {
 		$c->render( text => "IP or subnet not allowed\n", status => 403, );
 		$virani->verbose( 'alert', 'IP or subnet not allowed: ' . $remote_ip );

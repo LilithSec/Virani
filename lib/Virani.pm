@@ -95,6 +95,7 @@ sub new {
 	my $self = {
 		allowed_subnets   => [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
 		apikey            => '',
+		auth_by_IP_only   => 1,
 		default_set       => 'default',
 		cache             => '/var/cache/virani',
 		default_regex     => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
@@ -126,7 +127,8 @@ sub new {
 	}
 
 	# real in basic values
-	my @real_in = ( 'apikey', 'default_set', 'cache', 'default_max_time', 'verbose_to_syslog', 'verbose' );
+	my @real_in
+		= ( 'apikey', 'default_set', 'cache', 'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only' );
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
 			$self->{$key} = $opts{$key};
@@ -140,6 +142,8 @@ sub new {
 
 Checks the API key.
 
+If auth_via_IP_only is 1, this will always return true.
+
 	my $apikey=$c->param('apikey');
 	if (!$virani->check_apikey($apikey)) {
 		$c->render( text => "Invalid API key\n", status=>403, );
@@ -151,6 +155,10 @@ Checks the API key.
 sub check_apikey {
 	my $self   = $_[0];
 	my $apikey = $_[1];
+
+	if ($self->{auth_by_IP_only}) {
+		return 1;
+	}
 
 	if ( !defined($apikey) ) {
 		return 0;
@@ -549,8 +557,8 @@ sub get_pcap_local {
 			. " final_size="
 			. $to_return->{final_size} );
 
-	if ( defined($opts{file}) && $cache_file ne $opts{file} ) {
-		$self->verbose('info', 'Copying "'.$cache_file.'" to "'.$opts{file}.'"' );
+	if ( defined( $opts{file} ) && $cache_file ne $opts{file} ) {
+		$self->verbose( 'info', 'Copying "' . $cache_file . '" to "' . $opts{file} . '"' );
 		cp( $cache_file, $opts{file} );
 	}
 

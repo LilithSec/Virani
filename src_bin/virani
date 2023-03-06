@@ -6,7 +6,8 @@ use Getopt::Long;
 use Virani;
 use TOML;
 use File::Slurp;
-use Virani::Client;
+
+#use Virani::Client;
 
 sub version {
 	print "viarni v. 0.0.1\n";
@@ -83,47 +84,55 @@ if ( !$remote ) {
 		verbose  => $verbose,
 		set      => $set,
 	);
+
+	exit;
 }
 else {
-	if (!defined($url) && !defined($apikey)) {
-		print "API key and URL not specified... looking for config ".$remote."\n";
-		if (-f '/usr/local/etc/virani.d/'.$remote.'.toml') {
-			$config='/usr/local/etc/virani.d/'.$remote.'.toml';
-		}elsif(-f 'etc/virani.d/'.$remote.'.toml') {
-			$config='/etc/virani.d/'.$remote.'.toml';
-		}elsif(-f './'.$remote.'.toml') {
-			$config='./'.$remote.'.toml';
-		}elsif(-f $remote ) {
-			$config=$remote;
+	if ( !defined($url) && !defined($apikey) ) {
+		print "API key and URL not specified... looking for config " . $remote . "\n";
+		if ( -f '/usr/local/etc/virani.d/' . $remote . '.toml' ) {
+			$config = '/usr/local/etc/virani.d/' . $remote . '.toml';
 		}
-		print 'Config: '.$remote."\n";
+		elsif ( -f 'etc/virani.d/' . $remote . '.toml' ) {
+			$config = '/etc/virani.d/' . $remote . '.toml';
+		}
+		elsif ( -f './' . $remote . '.toml' ) {
+			$config = './' . $remote . '.toml';
+		}
+		elsif ( -f $remote ) {
+			$config = $remote;
+		}
+		print 'Config: ' . $remote . "\n";
 		my $raw_toml;
-        eval { $raw_toml = read_file( $config ); };
-        if ( $@ || !defined($raw_toml) ) {
+		eval { $raw_toml = read_file($config); };
+		if ( $@ || !defined($raw_toml) ) {
 			my $error = 'Failed to read config file, "' . $config . '"';
 			if ($@) {
 				$error = $error . ' ' . $@;
 			}
 			die($error);
-        }
+		}
 
-        my $toml;
-        eval { $toml = from_toml($raw_toml); };
-        if ($@) {
+		my $toml;
+		eval { $toml = from_toml($raw_toml); };
+		if ($@) {
 			die($@);
 		}
 
-		if (!defined($toml->{apikey})) {
-			die('Config "'.$config.'" does not contain a value for apikey');
-		}elsif(!defined($toml->{url})) {
-			die('Config "'.$config.'" does not contain a value for url');
+		if ( !defined( $toml->{apikey} ) ) {
+			die( 'Config "' . $config . '" does not contain a value for apikey' );
 		}
-		$apikey=$toml->{apikey};
-		$url=$toml->{url};
+		elsif ( !defined( $toml->{url} ) ) {
+			die( 'Config "' . $config . '" does not contain a value for url' );
+		}
+		$apikey = $toml->{apikey};
+		$url    = $toml->{url};
 
-	}elsif ( !defined($url) && defined($apikey) ) {
+	}
+	elsif ( !defined($url) && defined($apikey) ) {
 		die("--apikey and --url must be used in conjuction with each other");
-	}elsif ( defined($url) && !defined($apikey) ) {
+	}
+	elsif ( defined($url) && !defined($apikey) ) {
 		die("--apikey and --url must be used in conjuction with each other");
 	}
 
