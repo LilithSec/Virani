@@ -36,6 +36,7 @@ my $config = '/usr/local/etc/virani.toml';
 my $tmpdir;
 my $no_cache = 0;
 my $quiet    = 0, my $verbose = 1;
+my $tshark;
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
@@ -53,6 +54,7 @@ GetOptions(
 	'q'        => \$quiet,
 	'url=s'    => \$url,
 	'apikey=s' => \$apikey,
+	'tshark=s' => \$tshark,
 );
 
 if ( !defined($start) ) {
@@ -83,6 +85,7 @@ if ( !$remote ) {
 		no_cache => $no_cache,
 		verbose  => $verbose,
 		set      => $set,
+		tshark   => $tshark,
 	);
 
 	exit;

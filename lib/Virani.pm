@@ -101,6 +101,7 @@ sub new {
 		default_regex     => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
 		default_strptime  => '%s',
 		default_max_time  => '3600',
+		default_tshark    => 0,
 		verbose_to_syslog => 0,
 		verbose           => 1,
 		sets              => {
@@ -299,6 +300,10 @@ Generates a PCAP locally and returns the path to it.
                        as been specified, don't die, but just CWD as the scrach dir.
         - Default :: 1
 
+    - tshark :: Override the set/default for if tshark should be used or not. 1 means uses
+                tshark and 0 means use tcpdump.
+        - Default :: undef
+
 The return is a hash reference that includes the following keys.
 
     - pcaps :: A array of PCAPs used.
@@ -321,6 +326,8 @@ The return is a hash reference that includes the following keys.
     - failed_size :: The size of the PCAP files that failed.
 
     - success_size :: the size of the PCAP files that successfully processed
+
+    - tshark :: 1 if instead of tcpdump.
 
 =cut
 
@@ -475,6 +482,14 @@ sub get_pcap_local {
 	# used for tracking the files to cleanup
 	my @tmp_files;
 
+	# figure out if we are using tcpdump or tshark
+	if (!defined($opts{tshark})) {
+		$opts{tshark}=$self->{default_tshark};
+		if (defined( $self->{sets}{$opts{set}}{tshark}  )) {
+			$opts{tshark}=$self->{sets}{$opts{set}}{tshark};
+		}
+	}
+
 	# the merge command
 	my $to_merge = [ 'mergecap', '-w', $cache_file ];
 	foreach my $pcap ( @{$to_check} ) {
@@ -488,10 +503,18 @@ sub get_pcap_local {
 
 		my $tmp_file = $cache_file . '-' . $to_return->{pcap_count};
 
-		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-			command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
-			verbose => 0
-		);
+		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf );
+		if (!$opts{tshark}) {
+			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
+																					command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
+																					verbose => 0
+																					);
+		}else {
+			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
+																					command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
+																					verbose => 0
+			);
+		}
 		if ($success) {
 			$to_return->{success_count}++;
 			$to_return->{success_size} += $size;

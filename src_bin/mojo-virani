@@ -3,7 +3,17 @@
 use Mojolicious::Lite -signatures;
 use Virani;
 
+# two are needed as /* and / don't overlap... so pass it to the_stuff to actually handle it
 get '/*' => sub ($c) {
+	the_stuff($c);
+};
+get '/' => sub ($c) {
+	the_stuff($c);
+};
+
+# handle it
+sub the_stuff {
+	my $c         = $_[0];
 	my $remote_ip = $c->{tx}{original_remote_address};
 
 	my $virani = Virani->new_from_conf;
@@ -12,11 +22,11 @@ get '/*' => sub ($c) {
 
 	# make sure we have a API key and it is valid
 	# only needed if not authing via IP only
-	if (!$virani->{auth_by_IP_only}) {
+	if ( !$virani->{auth_by_IP_only} ) {
 		my $apikey = $c->param('apikey');
-		if ( ! $virani->check_apikey($apikey) ) {
+		if ( !$virani->check_apikey($apikey) ) {
 			$c->render( text => "Invalid API key\n", status => 403, );
-			$virani->verbose( 'alert', 'Failed API key from: ' . $remote_ip.', API key: '.$apikey );
+			$virani->verbose( 'alert', 'Failed API key from: ' . $remote_ip . ', API key: ' . $apikey );
 			return;
 		}
 		$virani->verbose( 'info', 'API key: ' . $apikey );
@@ -30,6 +40,7 @@ get '/*' => sub ($c) {
 		return;
 	}
 
+	
 	# if the set is not specified, use the default
 	my $set = $c->param('set');
 	if ( !defined($set) or $set eq '' ) {
@@ -74,6 +85,8 @@ get '/*' => sub ($c) {
 		return;
 	}
 
+	my $tshark = $c->param('tshark');
+
 	# get the bpf value and make sure it is vaguely sane
 	my $bpf = $c->param('bpf');
 	eval { $bpf = $virani->bpf_clean($bpf); };
@@ -84,16 +97,16 @@ get '/*' => sub ($c) {
 	}
 
 	my $returned;
-	eval { $returned = $virani->get_pcap_local( set=>$set, start => $start_obj, end => $end_obj, bpf => $bpf ); };
+	eval { $returned = $virani->get_pcap_local( set => $set, start => $start_obj, end => $end_obj, bpf => $bpf, tshark=>$tshark ); };
 	if ($@) {
 		$c->render( text => "PCAP generation died... please see syslog\n", status => 400, );
-		$virani->verbose( 'err', 'get_pcap_local failed: '.$@ );
+		$virani->verbose( 'err', 'get_pcap_local failed: ' . $@ );
 		return;
 	}
 
 	$c->reply->file( $returned->{path} );
 
 	return;
-};
+}
 
 app->start;
