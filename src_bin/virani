@@ -37,7 +37,7 @@ my $config = '/usr/local/etc/virani.toml';
 my $tmpdir;
 my $no_cache = 0;
 my $quiet    = 0, my $verbose = 1;
-my $type = 'tcpdump';
+my $type     = 'tcpdump';
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
@@ -77,13 +77,13 @@ if ( !$remote ) {
 
 	my $start_obj;
 	eval { $start_obj = Time::Piece::Guess->guess_to_object($start); };
-	if ($@ || !defined($start_obj)) {
-		die('Failed to parse the start stamp,"'.$start.'",');
+	if ( $@ || !defined($start_obj) ) {
+		die( 'Failed to parse the start stamp,"' . $start . '",' );
 	}
 	my $end_obj;
 	eval { $end_obj = Time::Piece::Guess->guess_to_object($end); };
-	if ($@ || !defined($end_obj)) {
-		die('Failed to parse the end timestamp,"'.$end.'",');
+	if ( $@ || !defined($end_obj) ) {
+		die( 'Failed to parse the end timestamp,"' . $end . '",' );
 	}
 
 	$virani->get_pcap_local(

@@ -106,6 +106,7 @@ sub new {
 		verbose_to_syslog => 0,
 		verbose           => 1,
 		type              => 'tcpdump',
+		padding           => 5,
 		sets              => {
 			default => {
 				path => '/var/log/daemonlogger',
@@ -139,6 +140,45 @@ sub new {
 	}
 
 	return $self;
+}
+
+=head2 filter_clean
+
+Removes starting and trailing whitespace as well as collapsing
+consecutive whitespace to a single space.
+
+The purpose for this is to make sure that tshark/BPF filters passed
+are consistent for cacheing, even if their white space differs.
+
+A undef passed to it will return ''.
+
+Will die if the filter matches /^\w*\-/ as it starts with a '-', which
+tcpdump will interpret as a switch.
+
+    my $cleaned_bpf=$virani->filter_clean($bpf);
+
+=cut
+
+sub filter_clean {
+	my $self   = $_[0];
+	my $string = $_[1];
+
+	if ( !defined($string) ) {
+		return '';
+	}
+
+	if ( $string =~ /^\w*\-/ ) {
+		die( 'The filter, "' . $string . '", begins with a "-", which dieing for safety reasons' );
+	}
+
+	# remove white space at the start and end
+	$string =~ s/^\s*//g;
+	$string =~ s/\s+$//g;
+
+	# replace all multiple white space characters with a single space
+	$string =~ s/\s\s+/ /g;
+
+	return $string;
 }
 
 =head1 check_apikey
@@ -217,43 +257,31 @@ sub check_remote_ip {
 	return 0;
 }
 
-=head2 bpf_clean
+=head1 check_type
 
-Removes starting and trailing whitespace as well as collapsing
-consecutive whitespace to a single space.
+Verify if the check is valid or note
 
-The purpose for this is to make sure that BPF filters passed
-are consistent for cacheing, even if their white space differs.
+Returns 0/1 based on if it a known type or not.
 
-A undef passed to it will return ''.
-
-Will die if the BPF matches /^\w*\-/ as it starts with a '-', which
-tcpdump will interpret as a switch.
-
-    my $cleaned_bpf=$virani->bpf_clean($bpf);
+    if ( ! $virani->check_type( $type )){
+        print $type." is not known\n";
+    }
 
 =cut
 
-sub bpf_clean {
-	my $self   = $_[0];
-	my $string = $_[1];
+sub check_type {
+	my $self = $_[0];
+	my $type = $_[1];
 
-	if ( !defined($string) ) {
-		return '';
+	if ( !defined($type) ) {
+		return 0;
 	}
 
-	if ( $string =~ /^\w*\-/ ) {
-		die( 'The BPF, "' . $string . '", begins with a "-", which dieing for safety reasons' );
+	if ( $type ne 'tshark' && $type ne 'tcpdump' ) {
+		return 0;
 	}
 
-	# remove white space at the start and end
-	$string =~ s/^\s*//g;
-	$string =~ s/\s+$//g;
-
-	# replace all multiple white space characters with a single space
-	$string =~ s/\s\s+/ /g;
-
-	return $string;
+	return 1;
 }
 
 =head2 get_default_set
@@ -283,7 +311,7 @@ Generates a PCAP locally and returns the path to it.
     - padding :: Number of seconds to pad the start and end with.
         - Default :: 5
 
-    - bpf :: The BPF filter to use.
+    - filter :: The BPF or tshark filter to use.
         - Default :: ''
 
     - set :: The PCAP set to use. Will use what ever the default is set to if undef or blank.
@@ -320,7 +348,7 @@ The return is a hash reference that includes the following keys.
 
     - success_found :: A count of successfully processed PCAPs.
 
-    - bpf :: The used BPF.
+    - filter :: The used filter.
 
     - total_size :: The size of all PCAP files checked.
 
@@ -337,12 +365,15 @@ sub get_pcap_local {
 
 	# make sure we have something for type and check to make sure it is sane
 	if ( !defined( $opts{type} ) ) {
-		$opts{type} = 'tcpdump';
-	}
-	else {
-		if ( $opts{type} ne 'tcpdump' && $opts{type} ne 'tshark' ) {
-			die( 'type "' . $opts{type} . '" is not a supported type, tcpdump or tshark,' );
+		$opts{type} = $self->{type};
+		if ( defined( $self->{sets}{ $opts{set} }{type} ) ) {
+			$opts{type} = $self->{sets}{ $opts{set} }{type};
 		}
+	}
+
+	# check it here incase the config includes something off
+	if ( !$self->check_type( $opts{type} ) ) {
+		die( 'type "' . $opts{type} . '" is not a supported type, tcpdump or tshark,' );
 	}
 
 	# basic sanity checking
@@ -360,10 +391,6 @@ sub get_pcap_local {
 	}
 	elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
 		die('$opts{padding} is not numeric');
-	}
-
-	if ( !defined( $opts{padding} ) ) {
-		$opts{padding} = 5;
 	}
 
 	if ( !defined( $opts{auto_no_cache} ) ) {
@@ -388,14 +415,25 @@ sub get_pcap_local {
 				. '" is not exist or is not a directory' );
 	}
 
-	# apply the padding
+	# get the paddimg, make sure it is sane, and apply it
+	if ( !defined( $opts{padding} ) ) {
+		$opts{padding} = $self->{padding};
+		if ( defined( $self->{sets}{ $opts{set} }{padding} ) ) {
+			$opts{padding} = $self->{sets}{ $opts{set} }{padding};
+		}
+	}
+
+	# check it here incase the config includes something off
+	if ( $opts{padding} !~ /^[0-9]+$/ ) {
+		die( '"' . $opts{padding} . '" is not a numeric' );
+	}
 	$opts{start} = $opts{start} - $opts{padding};
 	$opts{end}   = $opts{end} + $opts{padding};
 
-	# clean the bpf
-	$opts{bpf} = $self->bpf_clean( $opts{bpf} );
+	# clean the filter
+	$opts{filter} = $self->filter_clean( $opts{filter} );
 
-	#
+	# get the set
 	my $set_path = $self->get_set_path( $opts{set} );
 	if ( !defined($set_path) ) {
 		die( 'The set "' . $opts{set} . '" does not either exist or the path value for it is undef' );
@@ -422,15 +460,7 @@ sub get_pcap_local {
 
 	# figure out if we are using tcpdump or tshark
 	if ( !defined( $opts{type} ) ) {
-		$opts{type} = $self->{type};
-		if ( defined( $self->{sets}{ $opts{set} }{type} ) ) {
-			$opts{type} = $self->{sets}{ $opts{set} }{type};
-		}
-	}
 
-	# make sure we have something known for $opts{type}
-	if ($opts{type} ne 'tcpdump' && $opts{type} ne 'tshark') {
-		die('$opts{type},"'.$opts{type}.'", is a unknown type');
 	}
 
 	my $cache_file;
@@ -461,7 +491,7 @@ sub get_pcap_local {
 				. $opts{type} . '-'
 				. $opts{start}->epoch . '-'
 				. $opts{end}->epoch . "-"
-				. lc( md5_hex( $opts{bpf} ) );
+				. lc( md5_hex( $opts{filter} ) );
 		}
 		elsif ( !$opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
 			die(      '$opts{auto_no_cache} is false and $opts{no_cache} is false, but the cache dir "'
@@ -484,7 +514,7 @@ sub get_pcap_local {
 			. $opts{start}->epoch . '-'
 			. $opts{type} . '-'
 			. $opts{end}->epoch . "-"
-			. lc( md5_hex( $opts{bpf} ) );
+			. lc( md5_hex( $opts{filter} ) );
 	}
 
 	# The path to return.
@@ -495,16 +525,16 @@ sub get_pcap_local {
 		failed_count  => 0,
 		success_count => 0,
 		path          => $cache_file,
-		bpf           => $opts{bpf},
+		filter        => $opts{filter},
 		total_size    => 0,
 		failed_size   => 0,
 		success_size  => 0,
 		tmp_size      => 0,
 		final_size    => 0,
-		type        => $opts{type},
+		type          => $opts{type},
 	};
 
-	$self->verbose( 'info', 'BPF: ' . $opts{bpf} );
+	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
 
 	# used for tracking the files to cleanup
 	my @tmp_files;
@@ -525,13 +555,13 @@ sub get_pcap_local {
 		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf );
 		if ( $opts{type} eq 'tcpdump' ) {
 			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-				command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
+				command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{filter} ],
 				verbose => 0
 			);
 		}
 		else {
 			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
+				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $opts{filter} ],
 				verbose => 0
 			);
 		}
