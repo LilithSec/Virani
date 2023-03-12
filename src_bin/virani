@@ -6,6 +6,7 @@ use Getopt::Long;
 use Virani;
 use TOML;
 use File::Slurp;
+use Time::Piece::Guess;
 
 #use Virani::Client;
 
@@ -36,7 +37,7 @@ my $config = '/usr/local/etc/virani.toml';
 my $tmpdir;
 my $no_cache = 0;
 my $quiet    = 0, my $verbose = 1;
-my $tshark;
+my $type = 'tcpdump';
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
@@ -54,7 +55,7 @@ GetOptions(
 	'q'        => \$quiet,
 	'url=s'    => \$url,
 	'apikey=s' => \$apikey,
-	'tshark=s' => \$tshark,
+	'type=s'   => \$type,
 );
 
 if ( !defined($start) ) {
@@ -74,8 +75,16 @@ if ( !$remote ) {
 	$virani->set_verbose($verbose);
 	$virani->set_verbose_to_syslog(0);
 
-	my $start_obj = $virani->timestamp_to_object($start);
-	my $end_obj   = $virani->timestamp_to_object($end);
+	my $start_obj;
+	eval { $start_obj = Time::Piece::Guess->guess_to_object($start); };
+	if ($@ || !defined($start_obj)) {
+		die('Failed to parse the start stamp,"'.$start.'",');
+	}
+	my $end_obj;
+	eval { $end_obj = Time::Piece::Guess->guess_to_object($end); };
+	if ($@ || !defined($end_obj)) {
+		die('Failed to parse the end timestamp,"'.$end.'",');
+	}
 
 	$virani->get_pcap_local(
 		start    => $start_obj,
@@ -85,7 +94,7 @@ if ( !$remote ) {
 		no_cache => $no_cache,
 		verbose  => $verbose,
 		set      => $set,
-		tshark   => $tshark,
+		type     => $type,
 	);
 
 	exit;

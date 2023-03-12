@@ -13,6 +13,7 @@ use File::Spec;
 use IPC::Cmd qw(run);
 use File::Copy "cp";
 use Sys::Syslog;
+use JSON;
 
 =head1 NAME
 
@@ -104,6 +105,7 @@ sub new {
 		default_tshark    => 0,
 		verbose_to_syslog => 0,
 		verbose           => 1,
+		type              => 'tcpdump',
 		sets              => {
 			default => {
 				path => '/var/log/daemonlogger',
@@ -300,9 +302,8 @@ Generates a PCAP locally and returns the path to it.
                        as been specified, don't die, but just CWD as the scrach dir.
         - Default :: 1
 
-    - tshark :: Override the set/default for if tshark should be used or not. 1 means uses
-                tshark and 0 means use tcpdump.
-        - Default :: undef
+    - type :: 'tcpdump' or 'tshark', depending on what one wants the filter todo.
+        - Default :: tcpdump
 
 The return is a hash reference that includes the following keys.
 
@@ -327,12 +328,22 @@ The return is a hash reference that includes the following keys.
 
     - success_size :: the size of the PCAP files that successfully processed
 
-    - tshark :: 1 if instead of tcpdump.
+    - type :: The value of $opts{type}
 
 =cut
 
 sub get_pcap_local {
 	my ( $self, %opts ) = @_;
+
+	# make sure we have something for type and check to make sure it is sane
+	if ( !defined( $opts{type} ) ) {
+		$opts{type} = 'tcpdump';
+	}
+	else {
+		if ( $opts{type} ne 'tcpdump' && $opts{type} ne 'tshark' ) {
+			die( 'type "' . $opts{type} . '" is not a supported type, tcpdump or tshark,' );
+		}
+	}
 
 	# basic sanity checking
 	if ( !defined( $opts{start} ) ) {
@@ -410,19 +421,16 @@ sub get_pcap_local {
 	);
 
 	# figure out if we are using tcpdump or tshark
-	if ( !defined( $opts{tshark} ) ) {
-		$opts{tshark} = $self->{default_tshark};
-		if ( defined( $self->{sets}{ $opts{set} }{tshark} ) ) {
-			$opts{tshark} = $self->{sets}{ $opts{set} }{tshark};
+	if ( !defined( $opts{type} ) ) {
+		$opts{type} = $self->{type};
+		if ( defined( $self->{sets}{ $opts{set} }{type} ) ) {
+			$opts{type} = $self->{sets}{ $opts{set} }{type};
 		}
 	}
 
-	# for sanity sake make sure tshark given this is a perl boolean, make sure it is either 0 or 1
-	if ( $opts{tshark} ) {
-		$opts{tshark} = 1;
-	}
-	else {
-		$opts{tshark} = 0;
+	# make sure we have something known for $opts{type}
+	if ($opts{type} ne 'tcpdump' && $opts{type} ne 'tshark') {
+		die('$opts{type},"'.$opts{type}.'", is a unknown type');
 	}
 
 	my $cache_file;
@@ -450,7 +458,7 @@ sub get_pcap_local {
 			$cache_file
 				= $self->{cache} . '/'
 				. $opts{set} . '-'
-				. $opts{tshark} . '-'
+				. $opts{type} . '-'
 				. $opts{start}->epoch . '-'
 				. $opts{end}->epoch . "-"
 				. lc( md5_hex( $opts{bpf} ) );
@@ -474,6 +482,7 @@ sub get_pcap_local {
 			= $self->{cache} . '/'
 			. $opts{set} . '-'
 			. $opts{start}->epoch . '-'
+			. $opts{type} . '-'
 			. $opts{end}->epoch . "-"
 			. lc( md5_hex( $opts{bpf} ) );
 	}
@@ -492,7 +501,7 @@ sub get_pcap_local {
 		success_size  => 0,
 		tmp_size      => 0,
 		final_size    => 0,
-		tshark        => $opts{tshark},
+		type        => $opts{type},
 	};
 
 	$self->verbose( 'info', 'BPF: ' . $opts{bpf} );
@@ -514,7 +523,7 @@ sub get_pcap_local {
 		my $tmp_file = $cache_file . '-' . $to_return->{pcap_count};
 
 		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf );
-		if ( !$opts{tshark} ) {
+		if ( $opts{type} eq 'tcpdump' ) {
 			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
 				command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{bpf} ],
 				verbose => 0
@@ -673,154 +682,6 @@ sub set_verbose_to_syslog {
 	my ( $self, $to_syslog ) = @_;
 
 	$self->{verbose_to_syslog} = $to_syslog;
-}
-
-=head2 timestamp_to_object
-
-Takes a string and figures out the format to use to return a Time::Piece object.
-
-The following formats are supported. Microseconds are removed as L<Time::Piece> does
-not have 
-
-    %s
-    %s\.\d*
-    %Y-%m-%d %H:%M%z
-    %Y-%m-%d %H:%M:%S%z
-    %Y-%m-%d %H:%M:%S\.\d*%z
-    %Y-%m-%dT%H:%M%z
-    %Y-%m-%dT%H:%M:%S%z
-    %Y-%m-%dT%H:%M:%S\.\d*%z
-    %Y-%m-%d/%H:%M%z
-    %Y-%m-%d/%H:%M:%S%z
-    %Y-%m-%d/%H:%M:%S\.\d*%z
-    %Y-%m-%d %H:%M
-    %Y-%m-%d %H:%M:%S
-    %Y-%m-%d %H:%M:%S\.\d*
-    %Y-%m-%dT%H:%M
-    %Y-%m-%dT%H:%M:%S
-    %Y-%m-%dT%H:%M:%S\.\d*
-    %Y-%m-%d/%H:%M
-    %Y-%m-%d/%H:%M:%S
-    %Y-%m-%d/%H:%M:%S\.\d*
-    %Y%m%d %H:%M%Z
-    %Y%m%d %H:%M:%S%Z
-    %Y%m%d %H:%M:%S\.\d*%Z
-    %Y%m%dT%H:%M%Z
-    %Y%m%dT%H:%M:%S%Z
-    %Y%m%dT%H:%M:%S\.\d*%Z
-    %Y%m%d/%H:%M%Z
-    %Y%m%d/%H:%M:%S%Z
-    %Y%m%d/%H:%M:%S\.\d*%Z
-    %Y%m%d %H:%M
-    %Y%m%d %H:%M:%S
-    %Y%m%d %H:%M:%S\.\d*
-    %Y%m%dT%H:%M
-    %Y%m%dT%H:%M:%S
-    %Y%m%dT%H:%M:%S\.\d*
-    %Y%m%d/%H:%M
-    %Y%m%d/%H:%M:%S
-    %Y%m%d/%H:%M:%S\.\d*
-
-=cut
-
-sub timestamp_to_object {
-	my ( $self, $string ) = @_;
-
-	if ( !defined($string) ) {
-		die('No string passed');
-	}
-
-	# remove micro seconds if they are present
-	$string =~ s/\.\d+$//;
-	$string =~ s/\.\d+([\-\+]\d+)$/$1/;
-
-	my $format;
-	if ( $string =~ /^\d+$/ ) {
-		$format = '%s';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y-%m-%d %H:%M%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y-%m-%d %H:%M:%S%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y-%m-%dT%H:%M%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y-%m-%dT%H:%M:%S%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y-%m-%dT%H:%M%Z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y-%m-%d/%H:%M:%S%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y%m%d %H:%M%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y%m%d %H:%M:%S%z';
-	}
-	elsif ( $string =~ /\^d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y%m%dT%H:%M%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y%m%dT%H:%M:%S%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y%m%dT%H:%M%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9][-+]\d+$/ ) {
-		$format = '%Y%m%d/%H:%M:%S%z';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y-%m-%d %H:%M';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y-%m-%d %H:%M:%S';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y-%m-%dT%H:%M';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y-%m-%dT%H:%M:%S';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y-%m-%dT%H:%M';
-	}
-	elsif ( $string =~ /^\d\d\d\d\-\d\d-\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y-%m-%d/%H:%M:%S';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y%m%d %H:%M';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\ [0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y%m%d %H:%M:%S';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y%m%dT%H:%M';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\dT[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y%m%dT%H:%M:%S';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y%m%dT%H:%M';
-	}
-	elsif ( $string =~ /^\d\d\d\d\d\d\d\d\/[0-2][0-9]\:[0-5][0-9]\:[0-5][0-9]$/ ) {
-		$format = '%Y%m%d/%H:%M:%S';
-	}
-	else {
-		die( 'No matching pattern for the timesamp "' . $string . '"' );
-	}
-
-	my $t;
-	eval { $t = Time::Piece->strptime( $string, $format ); };
-	if ($@) {
-		die( 'Failed to parse the string "' . $string . '" using "' . $format . '"' );
-	}
-
-	return $t;
 }
 
 =head2 verbose

@@ -85,7 +85,15 @@ sub the_stuff {
 		return;
 	}
 
-	my $tshark = $c->param('tshark');
+	# get thet type and make sure it is something sane
+	my $type = $c->param('type');
+	if ( defined($type) ) {
+		if ( $type ne 'tcpdump' && $type ne 'tshark' ) {
+			$c->render( text => "Type '" . $type . "' is not a valid selection\n", status => 400, );
+			$virani->verbose( 'err', 'Type "' . $type . '" not a valid type' );
+			return;
+		}
+	}
 
 	# get the bpf value and make sure it is vaguely sane
 	my $bpf = $c->param('bpf');
@@ -99,11 +107,11 @@ sub the_stuff {
 	my $returned;
 	eval {
 		$returned = $virani->get_pcap_local(
-			set    => $set,
-			start  => $start_obj,
-			end    => $end_obj,
-			bpf    => $bpf,
-			tshark => $tshark
+			set   => $set,
+			start => $start_obj,
+			end   => $end_obj,
+			bpf   => $bpf,
+			type  => $type,
 		);
 	};
 	if ($@) {
@@ -112,7 +120,8 @@ sub the_stuff {
 		return;
 	}
 
-# if there are more than 0 found pcaps and the count is the same as the failed cound, then generation of them all failed
+	# if there are more than 0 found pcaps and the count is the same as the failed cound,
+	# then generation of them all failed
 	if ( $returned->{pcap_count} == $returned->{failed_count} && $returned->{pcap_count} > 0 ) {
 		my $json = JSON->new->allow_nonref->canonical(1)->pretty;
 		$c->render(

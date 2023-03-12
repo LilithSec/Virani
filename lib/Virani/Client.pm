@@ -3,6 +3,8 @@ package Virani::Client;
 use 5.006;
 use strict;
 use warnings;
+use LWP::UserAgent;
+use HTTP::Request::Common;
 
 =head1 NAME
 
@@ -24,7 +26,7 @@ Perhaps a little code snippet.
 
     use Virani::Client;
 
-    my $virani_client = Virani::Client->new(apikey=>$apikey, url=>$url);
+    my $virani_client = Virani::Client->new(apikey=>$apikey, url=>$url, SSL_verify_mode=>0, verify_hostname=>0, timeout=>30);
 
 
 =head1 METHODS
@@ -39,9 +41,6 @@ Perhaps a little code snippet.
 sub new {
 	my ( $blank, %opts ) = @_;
 
-	if ( !defined( $opts{apikey} ) ) {
-		die('No apikey defined');
-	}
 	if ( !defined( $opts{url} ) ) {
 		die('No url defined');
 	}
@@ -60,7 +59,17 @@ sub new {
 =cut
 
 sub fetch{
+	my ( $self, %opts ) = @_;
 
+	if (!defined($opts{filter})) {
+		$opts{filter}='';
+	}
+
+	if (!defined($opts{type})) {
+		$opts{type}='tcpdump';
+	}
+
+	my $ua= LWP::UserAgent->new();
 }
 
 =head1 AUTHOR
