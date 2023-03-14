@@ -126,6 +126,7 @@ sub fetch {
 	}
 	$url = $url . '&bpf=' . $opts{filter};
 
+	# get the PCAP
 	my $res;
 	eval{
 		$res=$ua->request(GET $url);
@@ -133,10 +134,24 @@ sub fetch {
 	if ($@) {
 		die('Fetch failed... '.$@);
 	}
-
 	if ($res->is_success) {
 		my $pcap=$res->decoded_content;
 		write_file($opts{file}, $pcap)|| die('PCAP write to "'.$opts{file}.'" failed... '.$@);
+	}else {
+		die('Fetch failed... '.$url.' ... '.$res->status_line.' ... '.$res->decoded_content);
+	}
+
+	# get the meta
+	$url=$url.'&get_meta=1';
+	eval{
+		$res=$ua->request(GET $url);
+	};
+	if ($@) {
+		die('Fetch failed... '.$@);
+	}
+	if ($res->is_success) {
+		my $raw_json=$res->decoded_content;
+		print "Metadata...\n".$raw_json;
 	}else {
 		die('Fetch failed... '.$url.' ... '.$res->status_line.' ... '.$res->decoded_content);
 	}

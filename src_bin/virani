@@ -8,8 +8,7 @@ use TOML;
 use File::Slurp;
 use Time::Piece::Guess;
 use Virani::Client;
-
-#use Virani::Client;
+use JSON;
 
 sub version {
 	print "viarni v. 0.0.1\n";
@@ -94,7 +93,7 @@ if ( !$remote ) {
 	$virani->set_verbose($verbose);
 	$virani->set_verbose_to_syslog(0);
 
-	$virani->get_pcap_local(
+	my $returned = $virani->get_pcap_local(
 		start    => $start_obj,
 		end      => $end_obj,
 		filter   => $filter,
@@ -104,6 +103,10 @@ if ( !$remote ) {
 		set      => $set,
 		type     => $type,
 	);
+	if ( $returned->{using_cache} ) {
+		my $json = JSON->new->allow_nonref->pretty->canonical(1);
+		print "Cache metadata...\n" . $json->encode($returned);
+	}
 
 	exit 0;
 }

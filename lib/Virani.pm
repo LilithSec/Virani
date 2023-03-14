@@ -448,13 +448,12 @@ Generates a PCAP locally and returns the path to it.
               the cache file.
         - Default :: undef
 
-    - no_cache :: Don't cache this entry, just use the the the cache dir or dir
-                  as scratch space. If the cache dir is not writable, CWD will be
-                  tried.
-        - Default :: undef
+    - no_cache :: If cached, don't return that, but regen and if applicable re-cache.
+        - Default :: 0
 
     - auto_no_cache :: If the cache dir is being used and not writeable and a file
-                       as been specified, don't die, but just CWD as the scrach dir.
+                       as been specified, don't die, but use the output file name
+                       as the basis of for the tmp file.
         - Default :: 1
 
     - type :: 'tcpdump' or 'tshark', depending on what one wants the filter todo.
@@ -534,6 +533,10 @@ sub get_pcap_local {
 		$opts{auto_no_cache} = 1;
 	}
 
+	if (!defined($opts{no_cache})) {
+		$opts{no_cache}=0;
+	}
+
 	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
 		$opts{set} = $self->get_default_set;
 	}
@@ -563,10 +566,48 @@ sub get_pcap_local {
 	# clean the filter
 	$opts{filter} = $self->filter_clean( $opts{filter} );
 
+	# get the cache file to use
 	my $cache_file;
 	eval { $cache_file = $self->get_cache_file(%opts); };
 	if ($@) {
 		die( '$self->get_cache_files(%opts) failed... ' . $@ );
+	}
+
+	# if applicable return the cache file
+	my $return_cache=0;
+	if (
+		defined( $opts{file} )
+		&& $opts{file} ne $cache_file
+		&& !$opts{no_cache}
+		&& -f $cache_file
+		&& -f $cache_file . '.json'
+
+		)
+	{
+		$return_cache=1;
+	}
+	elsif ( !defined( $opts{file} ) && !$opts{no_cache} && -f $cache_file && -f $cache_file . '.json' ) {
+		$return_cache=1;
+	}
+	if ($return_cache) {
+		my $cache_message='Already cached... "' . $cache_file . '"';
+		if (defined($opts{file}) && $opts{file} ne $cache_file ) {
+			$cache_message=$cache_message.' -> "' . $opts{file} . '"';
+		}
+		$self->verbose( 'info',  $cache_message);
+		if (defined($opts{file})) {
+			cp( $cache_file, $opts{file} );
+		}
+		my $to_return;
+		eval {
+			my $cache_meta_raw = read_file( $cache_file . '.json' );
+			$to_return = decode_json($cache_meta_raw);
+		};
+		if ($@) {
+			die( 'Failed to read cache metadata JSON, "' . $cache_file . '.json"' );
+		}
+		$to_return->{using_cache} = 1;
+		return $to_return;
 	}
 
 	# check it here incase the config includes something off
@@ -742,6 +783,8 @@ sub get_pcap_local {
 		$self->verbose( 'info', 'Copying "' . $cache_file . '" to "' . $opts{file} . '"' );
 		cp( $cache_file, $opts{file} );
 	}
+
+	$to_return->{using_cache} = 0;
 
 	return $to_return;
 }

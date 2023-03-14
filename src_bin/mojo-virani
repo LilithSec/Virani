@@ -111,7 +111,7 @@ sub the_stuff {
 		$get_meta = 1;
 	}
 	else {
-		$get_meta = 1;
+		$get_meta = 0;
 	}
 	$virani->verbose( 'info', 'get_meta: ' . $get_meta );
 
@@ -154,7 +154,21 @@ sub the_stuff {
 		}
 		$return_file = $returned->{path};
 	}else {
-		
+		eval{
+			$return_file = $virani->get_cache_file(
+												   set    => $set,
+												   start  => $start_obj,
+												   end    => $end_obj,
+												   filter => $bpf,
+												   type   => $type,
+												   );
+			$return_file=$return_file.'.json';
+		};
+		if ($@) {
+			$c->render( text => "Getting metadata JSON failed... please see syslog\n", status => 400, );
+			return;
+		}
+		$virani->verbose( 'info', 'returning '.$return_file);
 	}
 
 	# if this fails, it is a old version of Mojolicious
