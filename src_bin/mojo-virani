@@ -89,7 +89,7 @@ sub the_stuff {
 	# get thet type and make sure it is something sane
 	my $type = $c->param('type');
 	if ( defined($type) ) {
-		if ( !$$virani->check_type($type) ) {
+		if ( !$virani->check_type($type) ) {
 			$c->render( text => "Type '" . $type . "' is not a valid type\n", status => 400, );
 			$virani->verbose( 'err', 'Type "' . $type . '" not a valid type' );
 			return;
@@ -105,47 +105,63 @@ sub the_stuff {
 		return;
 	}
 
-	my $returned;
-	eval {
-		$returned = $virani->get_pcap_local(
-			set   => $set,
-			start => $start_obj,
-			end   => $end_obj,
-			bpf   => $bpf,
-			type  => $type,
-		);
-	};
-	if ($@) {
-		$c->render( text => "PCAP generation died... please see syslog\n", status => 400, );
-		$virani->verbose( 'err', 'get_pcap_local failed: ' . $@ );
-		return;
+	my $get_meta;
+	$get_meta = $c->param('get_meta');
+	if ($get_meta) {
+		$get_meta = 1;
 	}
+	else {
+		$get_meta = 1;
+	}
+	$virani->verbose( 'info', 'get_meta: ' . $get_meta );
 
-	# if there are more than 0 found pcaps and the count is the same as the failed cound,
-	# then generation of them all failed
-	if ( $returned->{pcap_count} == $returned->{failed_count} && $returned->{pcap_count} > 0 ) {
-		my $json = JSON->new->allow_nonref->canonical(1)->pretty;
-		$c->render(
-			text => 'All PCAP generation failed. pcap_count: '
-				. $returned->{pcap_count}
-				. ', failed_count: '
-				. $returned->{failed_count} . "\n\n"
-				. $json->encode($returned),
-			status => 400,
-		);
-		$virani->verbose( 'err',
-				  'All PCAP generation failed. pcap_count: '
-				. $returned->{pcap_count}
-				. ', failed_count: '
-				. $returned->{failed_count} );
-		return;
+	my $return_file;
+	if ( !$get_meta ) {
+		my $returned;
+		eval {
+			$returned = $virani->get_pcap_local(
+				set    => $set,
+				start  => $start_obj,
+				end    => $end_obj,
+				filter => $bpf,
+				type   => $type,
+			);
+		};
+		if ($@) {
+			$c->render( text => "PCAP generation died... please see syslog\n", status => 400, );
+			$virani->verbose( 'err', 'get_pcap_local failed: ' . $@ );
+			return;
+		}
+
+		# if there are more than 0 found pcaps and the count is the same as the failed cound,
+		# then generation of them all failed
+		if ( $returned->{pcap_count} == $returned->{failed_count} && $returned->{pcap_count} > 0 ) {
+			my $json = JSON->new->allow_nonref->canonical(1)->pretty;
+			$c->render(
+				text => 'All PCAP generation failed. pcap_count: '
+					. $returned->{pcap_count}
+					. ', failed_count: '
+					. $returned->{failed_count} . "\n\n"
+					. $json->encode($returned),
+				status => 400,
+			);
+			$virani->verbose( 'err',
+					  'All PCAP generation failed. pcap_count: '
+					. $returned->{pcap_count}
+					. ', failed_count: '
+					. $returned->{failed_count} );
+			return;
+		}
+		$return_file = $returned->{path};
+	}else {
+		
 	}
 
 	# if this fails, it is a old version of Mojolicious
-	eval { $c->reply->file( $returned->{path} ); };
+	eval { $c->reply->file($return_file); };
 	if ($@) {
 		use File::Slurp;
-		my $raw_pcap = read_file( $returned->{path} );
+		my $raw_pcap = read_file($return_file);
 		$c->render( data => $raw_pcap );
 	}
 

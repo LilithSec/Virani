@@ -5,6 +5,7 @@ use strict;
 use warnings;
 use LWP::UserAgent;
 use HTTP::Request::Common;
+use File::Slurp;
 
 =head1 NAME
 
@@ -26,7 +27,7 @@ Perhaps a little code snippet.
 
     use Virani::Client;
 
-    my $virani_client = Virani::Client->new(apikey=>$apikey, url=>$url, SSL_verify_mode=>0, verify_hostname=>0, timeout=>30);
+    my $virani_client = Virani::Client->new(apikey=>$apikey, url=>$url, verify_hostname=>0, timeout=>30);
 
 
 =head1 METHODS
@@ -45,9 +46,27 @@ sub new {
 		die('No url defined');
 	}
 
+	if ( !defined( $opts{verify_hostname} ) ) {
+		if ( defined( $ENV{VIRANI_VERIFY_HOSTNAME} ) ) {
+			$opts{verify_hostname} = $ENV{VIRANI_VERIFY_HOSTNAME};
+		}
+		elsif ( defined( $ENV{HTTPS_VERIFY_HOSTNAME} ) ) {
+			$opts{verify_hostname} = $ENV{HTTPS_VERIFY_HOSTNAME};
+
+		}
+		elsif ( defined( $ENV{PERL_LWP_VERIFY_HOSTNAME} ) ) {
+			$opts{verify_hostname} = $ENV{PERL_LWP_VERIFY_HOSTNAME};
+		}
+		else {
+			$opts{verify_hostname} = 1;
+		}
+	}
+
 	my $self = {
-		apikey => $opts{apikey},
-		url    => $opts{url},
+		apikey          => $opts{apikey},
+		url             => $opts{url},
+		timeout         => 60,
+		verify_hostname => $opts{verify_hostname},
 	};
 	bless $self;
 
@@ -58,18 +77,71 @@ sub new {
 
 =cut
 
-sub fetch{
+sub fetch {
 	my ( $self, %opts ) = @_;
 
-	if (!defined($opts{filter})) {
-		$opts{filter}='';
+	if ( !defined( $opts{filter} ) ) {
+		die('Nothing specified for $opts{filter}');
 	}
 
-	if (!defined($opts{type})) {
-		$opts{type}='tcpdump';
+	if ( !defined( $opts{type} ) ) {
+		$opts{type} = 'tcpdump';
 	}
 
-	my $ua= LWP::UserAgent->new();
+	if (!defined($opts{file})) {
+		$opts{file}='out.pcap';
+	}
+
+	# basic sanity checking
+	if ( !defined( $opts{start} ) ) {
+		die('$opts{start} not defined');
+	}
+	elsif ( !defined( $opts{end} ) ) {
+		die('$opts{start} not defined');
+	}
+	elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
+		die('$opts{start} is not a Time::Piece object');
+	}
+	elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
+		die('$opts{end} is not a Time::Piece object');
+	}
+
+	my $ua = LWP::UserAgent->new(
+		protocols_allowed => [ 'http', 'https' ],
+		timeout           => $self->{timeout},
+	);
+	if ( $self->{verify_hostname} ) {
+		$ua->ssl_opts( verify_hostname => 1 );
+	}
+	else {
+		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
+	}
+
+	$opts{filter}=~s/\ /\%20/g;
+
+	# put the url together
+	my $url = $self->{url} . '?start=' . $opts{start}->epoch . '&end=' . $opts{end}->epoch . '&type=' . $opts{type};
+	if ( defined( $self->{apikey} ) ) {
+		$url = $url . '&apikey=' . $self->{apikey};
+	}
+	$url = $url . '&bpf=' . $opts{filter};
+
+	my $res;
+	eval{
+		$res=$ua->request(GET $url);
+	};
+	if ($@) {
+		die('Fetch failed... '.$@);
+	}
+
+	if ($res->is_success) {
+		my $pcap=$res->decoded_content;
+		write_file($opts{file}, $pcap)|| die('PCAP write to "'.$opts{file}.'" failed... '.$@);
+	}else {
+		die('Fetch failed... '.$url.' ... '.$res->status_line.' ... '.$res->decoded_content);
+	}
+
+	return;
 }
 
 =head1 AUTHOR

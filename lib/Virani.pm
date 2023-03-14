@@ -17,7 +17,7 @@ use JSON;
 
 =head1 NAME
 
-Virani - The great new Virani!
+Virani - PCAP retrieval for a FPC setup writing to PCAP files.
 
 =head1 VERSION
 
@@ -29,13 +29,9 @@ our $VERSION = '0.0.1';
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
-
-Perhaps a little code snippet.
-
     use Virani;
 
-    my $foo = Virani->new();
+    my $virani = Virani->new();
     ...
 
 =head1 METHODS
@@ -74,11 +70,6 @@ sub new_from_conf {
 	eval { $toml = from_toml($raw_toml); };
 	if ($@) {
 		die($@);
-	}
-
-	# allow overriding the api key or setting a blank one
-	if ( defined( $opts{apikey} ) ) {
-		$toml->{apikey} = $opts{apikey};
 	}
 
 	return Virani->new( %{$toml} );
@@ -298,6 +289,142 @@ sub get_default_set {
 	return $self->{default_set};
 }
 
+=head2 get_cache_file
+
+Takes the same args as get_pcap_lcal.
+
+Returns the path to the file.
+
+    my $cache_file=$virani->get_cache_file(%opts);
+    if (! -f $cache_file.'json'){
+        echo "Cache file metadata does not exist, so either get_pcap_local died or it has not been ran\n";
+    }
+
+=cut
+
+sub get_cache_file {
+	my ( $self, %opts ) = @_;
+
+	# make sure we have something for type and check to make sure it is sane
+	if ( !defined( $opts{type} ) ) {
+		$opts{type} = $self->{type};
+		if ( defined( $self->{sets}{ $opts{set} }{type} ) ) {
+			$opts{type} = $self->{sets}{ $opts{set} }{type};
+		}
+	}
+
+	# check it here incase the config includes something off
+	if ( !$self->check_type( $opts{type} ) ) {
+		die( 'type "' . $opts{type} . '" is not a supported type, tcpdump or tshark,' );
+	}
+
+	# basic sanity checking
+	if ( !defined( $opts{start} ) ) {
+		die('$opts{start} not defined');
+	}
+	elsif ( !defined( $opts{end} ) ) {
+		die('$opts{start} not defined');
+	}
+	elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
+		die('$opts{start} is not a Time::Piece object');
+	}
+	elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
+		die('$opts{end} is not a Time::Piece object');
+	}
+	elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
+		die('$opts{padding} is not numeric');
+	}
+
+	if ( !defined( $opts{auto_no_cache} ) ) {
+		$opts{auto_no_cache} = 1;
+	}
+
+	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
+		$opts{set} = $self->get_default_set;
+	}
+
+	# make sure the set exists
+	if ( !defined( $self->{sets}->{ $opts{set} } ) ) {
+		die( 'The set "' . $opts{set} . '" is not defined' );
+	}
+	elsif ( !defined( $self->{sets}->{ $opts{set} }{path} ) ) {
+		die( 'The path for set "' . $opts{set} . '" is not defined' );
+	}
+	elsif ( !-d $self->{sets}->{ $opts{set} }{path} ) {
+		die(      'The path for set "'
+				. $opts{set} . '", "'
+				. $self->{sets}->{ $opts{set} }{path}
+				. '" is not exist or is not a directory' );
+	}
+
+	# get the paddimg, make sure it is sane, and apply it
+	if ( !defined( $opts{padding} ) ) {
+		$opts{padding} = $self->{padding};
+		if ( defined( $self->{sets}{ $opts{set} }{padding} ) ) {
+			$opts{padding} = $self->{sets}{ $opts{set} }{padding};
+		}
+	}
+
+	# clean the filter
+	$opts{filter} = $self->filter_clean( $opts{filter} );
+
+	my $cache_file;
+	if ( defined( $opts{file} ) ) {
+		my ( $volume, $directories, $file ) = File::Spec->splitpath( $opts{file} );
+
+		# make sure the directory the output file is using exists
+		if ( $directories ne '' && !-d $directories ) {
+			die(      '$opts{file} is set to "'
+					. $opts{file}
+					. '" but the directory part,"'
+					. $directories
+					. '", does not exist' );
+		}
+
+		# figure what what to use as the cache file
+		if ( $opts{no_cache} ) {
+			$cache_file = $opts{file};
+		}
+		elsif ( $opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
+			$cache_file = $opts{file};
+
+		}
+		elsif ( $opts{auto_no_cache} && ( -d $self->{cache} || -w $self->{cache} ) ) {
+			$cache_file
+				= $self->{cache} . '/'
+				. $opts{set} . '-'
+				. $opts{type} . '-'
+				. $opts{start}->epoch . '-'
+				. $opts{end}->epoch . "-"
+				. lc( md5_hex( $opts{filter} ) );
+		}
+		elsif ( !$opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
+			die(      '$opts{auto_no_cache} is false and $opts{no_cache} is false, but the cache dir "'
+					. $self->{dir}
+					. '" does not exist, is not a dir, or is not writable' );
+		}
+	}
+	else {
+		# make sure the cache is usable
+		if ( !-d $self->{cache} ) {
+			die( 'Cache dir,"' . $self->{cache} . '", does not exist or is not a dir' );
+		}
+		elsif ( !-w $self->{cache} ) {
+			die( 'Cache dir,"' . $self->{cache} . '", is not writable' );
+		}
+
+		$cache_file
+			= $self->{cache} . '/'
+			. $opts{set} . '-'
+			. $opts{start}->epoch . '-'
+			. $opts{type} . '-'
+			. $opts{end}->epoch . "-"
+			. lc( md5_hex( $opts{filter} ) );
+	}
+
+	return $cache_file;
+}
+
 =head2 get_pcap_local
 
 Generates a PCAP locally and returns the path to it.
@@ -357,6 +484,16 @@ The return is a hash reference that includes the following keys.
     - success_size :: the size of the PCAP files that successfully processed
 
     - type :: The value of $opts{type}
+
+    - padding :: The value of padding.
+
+    - start_s :: Start time in seconds since epoch, not including pading.
+
+    - end :: Send time in the format '%Y-%m-%dT%H:%M:%S%z'.
+
+    - end_s :: End time in seconds since epoch, not including pading.
+
+    - end :: End time in the format '%Y-%m-%dT%H:%M:%S%z'.
 
 =cut
 
@@ -423,15 +560,23 @@ sub get_pcap_local {
 		}
 	}
 
+	# clean the filter
+	$opts{filter} = $self->filter_clean( $opts{filter} );
+
+	my $cache_file;
+	eval { $cache_file = $self->get_cache_file(%opts); };
+	if ($@) {
+		die( '$self->get_cache_files(%opts) failed... ' . $@ );
+	}
+
 	# check it here incase the config includes something off
 	if ( $opts{padding} !~ /^[0-9]+$/ ) {
 		die( '"' . $opts{padding} . '" is not a numeric' );
 	}
-	$opts{start} = $opts{start} - $opts{padding};
-	$opts{end}   = $opts{end} + $opts{padding};
 
-	# clean the filter
-	$opts{filter} = $self->filter_clean( $opts{filter} );
+	# set the padding
+	my $start = $opts{start} - $opts{padding};
+	my $end   = $opts{end} + $opts{padding};
 
 	# get the set
 	my $set_path = $self->get_set_path( $opts{set} );
@@ -453,69 +598,10 @@ sub get_pcap_local {
 
 	my $to_check = File::Find::IncludesTimeRange->find(
 		items => \@pcaps,
-		start => $opts{start},
-		end   => $opts{end},
+		start => $start,
+		end   => $end,
 		regex => $ts_regexp,
 	);
-
-	# figure out if we are using tcpdump or tshark
-	if ( !defined( $opts{type} ) ) {
-
-	}
-
-	my $cache_file;
-	if ( defined( $opts{file} ) ) {
-		my ( $volume, $directories, $file ) = File::Spec->splitpath( $opts{file} );
-
-		# make sure the directory the output file is using exists
-		if ( $directories ne '' && !-d $directories ) {
-			die(      '$opts{file} is set to "'
-					. $opts{file}
-					. '" but the directory part,"'
-					. $directories
-					. '", does not exist' );
-		}
-
-		# figure what what to use as the cache file
-		if ( $opts{no_cache} ) {
-			$cache_file = $opts{file};
-		}
-		elsif ( $opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
-			$cache_file = $opts{file};
-
-		}
-		elsif ( $opts{auto_no_cache} && ( -d $self->{cache} || -w $self->{cache} ) ) {
-			$cache_file
-				= $self->{cache} . '/'
-				. $opts{set} . '-'
-				. $opts{type} . '-'
-				. $opts{start}->epoch . '-'
-				. $opts{end}->epoch . "-"
-				. lc( md5_hex( $opts{filter} ) );
-		}
-		elsif ( !$opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
-			die(      '$opts{auto_no_cache} is false and $opts{no_cache} is false, but the cache dir "'
-					. $self->{dir}
-					. '" does not exist, is not a dir, or is not writable' );
-		}
-	}
-	else {
-		# make sure the cache is usable
-		if ( !-d $self->{cache} ) {
-			die( 'Cache dir,"' . $self->{cache} . '", does not exist or is not a dir' );
-		}
-		elsif ( !-w $self->{cache} ) {
-			die( 'Cache dir,"' . $self->{cache} . '", is not writable' );
-		}
-
-		$cache_file
-			= $self->{cache} . '/'
-			. $opts{set} . '-'
-			. $opts{start}->epoch . '-'
-			. $opts{type} . '-'
-			. $opts{end}->epoch . "-"
-			. lc( md5_hex( $opts{filter} ) );
-	}
 
 	# The path to return.
 	my $to_return = {
@@ -532,6 +618,11 @@ sub get_pcap_local {
 		tmp_size      => 0,
 		final_size    => 0,
 		type          => $opts{type},
+		padding       => $opts{padding},
+		start_s       => $opts{start}->epoch,
+		start         => $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z'),
+		end_s         => => $opts{end}->epoch,
+		end           => $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z'),
 	};
 
 	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
@@ -623,6 +714,7 @@ sub get_pcap_local {
 				= stat($cache_file);
 			$to_return->{final_size} = $size;
 		}
+
 	}
 	else {
 		$self->verbose( 'err', "No PCAPs to merge" );
@@ -640,6 +732,12 @@ sub get_pcap_local {
 			. " final_size="
 			. $to_return->{final_size} );
 
+	$self->verbose( 'info', 'Creating metadata JSON at "' . $cache_file . '.json" ' );
+	my $json     = JSON->new->allow_nonref->pretty->canonical(1);
+	my $raw_json = $json->encode($to_return);
+	write_file( $cache_file . '.json', $raw_json );
+
+	# if the file and cache file are the same, then the cache dir not accessing, so no need to copy it
 	if ( defined( $opts{file} ) && $cache_file ne $opts{file} ) {
 		$self->verbose( 'info', 'Copying "' . $cache_file . '" to "' . $opts{file} . '"' );
 		cp( $cache_file, $opts{file} );
