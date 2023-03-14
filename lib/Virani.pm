@@ -77,7 +77,55 @@ sub new_from_conf {
 
 =head2 new
 
+Initiates the object.
 
+    - allowed_subnets :: The allowed subnets for fetching PCAPs for mojo-varini.
+        Defaults :: [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ]
+
+    - apikey :: Optional API key for mojo-varini.
+        Defaults :: undef
+
+    - auth_by_IP_only :: Auth by IP only and don't use a API key.
+        Default :: 1
+
+    - default_set :: The default set to use.
+        Default :: default
+
+    - cache :: Cache directory to write to.
+        Default :: /var/cache/virani
+
+    - default_regex :: The regex to use for getting the timestamp. The regex to pass to
+                       File::Find::IncludesTimeRange for finding PCAP files with timestamps
+                       that include the range in question.
+        Default :: (?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$
+
+    - verbose_to_syslog :: Send verbose items to syslog. This is used by mojo-virani.
+        Default :: 0
+
+    - verbose :: Print verbose info.
+        Default :: 1
+
+    - type :: Either tcpdump or tshark, which to use for filtering PCAP files in the
+              specified time slot. tcpdump is faster, but in general will not nicely handles
+              some VLAN types. For that tshark is needed, but it is signfigantly slower.
+        Default :: tcpdump
+
+    - padding :: How many seconds to add to the start and end time stamps to ensure the specified
+                 time slot is definitely included.
+        Default :: 5
+
+    - sets :: A hash of hashes of available sets.
+        Default :: { default => { path => '/var/log/daemonlogger' } }
+
+For sets, the following keys are usable, of which only path is required.
+
+    - path :: The base path of which the PCAPs are located.
+
+    - padding :: Padding value for this set.
+
+    - regex :: The timestamp regex to use with this set.
+
+    - type :: The default filter type to use with this set.
 
 =cut
 
@@ -86,14 +134,12 @@ sub new {
 
 	my $self = {
 		allowed_subnets   => [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
-		apikey            => '',
+		apikey            => undef,
 		auth_by_IP_only   => 1,
 		default_set       => 'default',
 		cache             => '/var/cache/virani',
 		default_regex     => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
-		default_strptime  => '%s',
 		default_max_time  => '3600',
-		default_tshark    => 0,
 		verbose_to_syslog => 0,
 		verbose           => 1,
 		type              => 'tcpdump',
@@ -493,6 +539,8 @@ The return is a hash reference that includes the following keys.
     - end_s :: End time in seconds since epoch, not including pading.
 
     - end :: End time in the format '%Y-%m-%dT%H:%M:%S%z'.
+
+    - using_cache :: If the cache was used or not.
 
 =cut
 
@@ -896,6 +944,28 @@ sub verbose {
 
 	return;
 }
+
+=head2 CONFIG
+
+The config format used toml, processed via L<TOML>.
+
+'new_from_conf' will initiate virani by reading it in and feeding it to 'new'.
+
+=head2 DAEMONLOGGER ON FREEBSD
+
+With daemonlogger setup along the lines of like below...
+
+    daemonlogger_enable="YES"
+    daemonlogger_flags="-f /usr/local/etc/daemonlogger.bpf -d -l /var/log/daemonlogger -t 120"
+
+The following can be made available via mojo-varini or locally via varini with the set name of
+default as below.
+
+    default_set='default'
+    allowed_subnets=["192.168.14.0/23", "127.0.0.1/8"]
+    [sets.default]
+    path='/var/log/daemonlogger'
+    regex='(?<timestamp>\d\d\d\d\d\d+)(\.pcap|(?<subsec>\.\d+)\.pcap)$'
 
 =head1 AUTHOR
 

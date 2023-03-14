@@ -10,6 +10,7 @@ my %WriteMakefileArgs = (
 	ABSTRACT_FROM      => 'lib/Virani.pm',
 	LICENSE            => 'lgpl_2_1',
 	MIN_PERL_VERSION   => '5.006',
+	INST_SCRIPT        => 'bin',
 	EXE_FILES          => [ 'src_bin/virani', 'src_bin/mojo-virani' ],
 	CONFIGURE_REQUIRES => {
 		'ExtUtils::MakeMaker' => '0',
@@ -22,7 +23,6 @@ my %WriteMakefileArgs = (
 		'TOML'                          => '0',
 		'Net::Subnet'                   => '0',
 		'JSON'                          => '0',
-		'Virani'                        => '0',
 		'TOML'                          => '0',
 		'File::Slurp'                   => '0',
 		'Net::Subnet'                   => '0',
@@ -48,7 +48,6 @@ my %WriteMakefileArgs = (
 			},
 		},
 	}
-
 );
 
 # Compatibility with old versions of ExtUtils::MakeMaker

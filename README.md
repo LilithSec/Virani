@@ -1,46 +1,85 @@
-Virani
+# Virani
 
-The README is used to introduce the module and provide instructions on
-how to install the module, any machine dependencies it may have (for
-example C compilers and installed libraries) and any other information
-that should be provided before the module is installed.
+## Installation & Setup
 
-A README file is required for CPAN modules since CPAN extracts the README
-file from a module distribution so that people browsing the archive
-can use it to get an idea of the module's uses. It is usually a good idea
-to provide version information here so that people can decide whether
-fixes for the module are worth downloading.
+Install various Perl requiremnets. This can be taken care of with
+command below.
 
+```shell
+    cpanm Virani
+```
 
-INSTALLATION
+Configure it.
 
-To install this module, run the following commands:
+For example on FreeBSD if you have daemonlogger set up something like
+below.
 
-	perl Makefile.PL
-	make
-	make test
-	make install
+```shell
+    daemonlogger_enable="YES"
+    daemonlogger_flags="-f /usr/local/etc/daemonlogger.bpf -d -l /var/log/daemonlogger -t 120"
+```
 
-SUPPORT AND DOCUMENTATION
+Then a basic config would be like below.
 
-After installing, you can find documentation for this module with the
-perldoc command.
+```toml
+    default_set='default'
+    allowed_subnets=["192.168.14.0/23", "127.0.0.1/8"]
+    [sets.default]
+    path='/var/log/daemonlogger'
+    regex='(?<timestamp>\d\d\d\d\d\d+)(\.pcap|(?<subsec>\.\d+)\.pcap)$'
+    strptime='%s'
+```
 
-    perldoc Virani
+For more information on the config file, see the POD for Virani.
 
-You can also look for information at:
+## Usage
 
-    RT, CPAN's request tracker (report bugs here)
-        https://rt.cpan.org/NoAuth/Bugs.html?Dist=Virani
+A example grabbing port 53 traffic below can be done like the following.
 
-    CPAN Ratings
-        https://cpanratings.perl.org/d/Virani
+```shell
+    virani -s 2023-02-27T11:00:18 -e 2023-02-27T11:31:18 -f 'port 53' 
+```
 
-    Search CPAN
-        https://metacpan.org/release/Virani
+The help info for virani is as below. For more info check out the POD
+for the module Virani and the script Virani.
 
+```
+--help            Print this.
+-h                Print this.
 
-LICENSE AND COPYRIGHT
+--version         Print version.
+-v                Print version..
+
+-r <remote>       Remote URL or config file for remote info.
+
+-a <apikey>       API key for remote URL if needed.
+
+-f <filter>       Filter for use with tshark or tcpdump.
+
+-t <type>         tcpdump or tshark
+                  Default :: tcpdump
+
+-t <set>          Set to use. If undef, uses whatever the default is.
+                  Default :: undef
+
+--config <config> Config file to use.
+                  Default :: /usr/local/etc/virani.toml
+
+-s <timestamp>    Start timestamp. Any format supported by
+                  Time::Piece::Guess is usable.
+
+-e <timestamp>    End timestamp. Any format supported by
+                  Time::Piece::Guess is usable.
+
+-w <output>       The file to write the PCAP to.
+                  Default :: out.pcap
+
+--nc              If cached, do not use it.
+
+-k                Do not check the SSL cert for HTTPS for remote.
+```
+
+# LICENSE AND COPYRIGHT
 
 This software is Copyright (c) 2023 by Zane C. Bowers-Hadley.
 

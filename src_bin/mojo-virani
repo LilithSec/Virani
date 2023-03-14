@@ -1,5 +1,22 @@
 #!perl
 
+=head1 NAME
+
+mojo-virani - A mojolicious server/CGI script for allowing remote fetching/searching of PCAPs.
+
+=head1 SYNOPSIS
+
+mojo-virani daemon -m production -l http://<ip>:<port>
+
+=head1 DESCRIPTION
+
+To use this as a CGI script, copy this to location of the CGI bin.
+
+May be used as a fast CGI script via running this locally as a daemon and forwarding
+that path to the where it is listening on.
+
+=cut
+
 use Mojolicious::Lite -signatures;
 use Time::Piece::Guess;
 use Virani;

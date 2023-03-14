@@ -27,7 +27,7 @@ Perhaps a little code snippet.
 
     use Virani::Client;
 
-    my $virani_client = Virani::Client->new(apikey=>$apikey, url=>$url, verify_hostname=>0, timeout=>30);
+    my $virani_client = Virani::Client->new(url=>$url);
 
 
 =head1 METHODS
@@ -35,7 +35,28 @@ Perhaps a little code snippet.
 
 =head2 new
 
+Initiates the object.
 
+    - url :: The URL to use to contact mojo-virani by.
+        Default :: undef
+
+    - apikey :: The API key if needed.
+        Default :: undef
+
+    - timeout :: Timeout for fetching it in seconds.
+        Default :: 60
+
+    - verify_hostname :: Check the cert if using HTTPS.
+        Default :: 1
+
+Of the above keys, only 'url' is a requirement.
+
+If verify_hostname is undef, the following enviromental variables are
+checked in the following order.
+
+    VIRANI_VERIFY_HOSTNAME
+    HTTPS_VERIFY_HOSTNAME
+    PERL_LWP_VERIFY_HOSTNAME
 
 =cut
 
@@ -75,6 +96,37 @@ sub new {
 
 =head2 fetch
 
+Reaches out via HTTP or HTTPS and fetches the PCAP and JSON metadata.
+
+    - start :: A L<Time::Piece> object of when to start looking.
+        - Default :: undef
+
+    - end :: A L<Time::Piece> object of when to stop looking.
+        - Default :: undef
+
+    - filter :: The BPF or tshark filter to use.
+        - Default :: undef
+
+    - set :: The PCAP set to use. Will use what ever the default is set to if undef or blank.
+        - Default :: undef
+
+    - file :: The file to output to. The metadata writen to a file of the same name
+              with '.json' appended.
+        - Default :: out.pcap
+
+    - type :: 'tcpdump' or 'tshark', depending on what one wants the filter todo.
+        - Default :: tcpdump
+
+The following are required
+
+    start
+    end
+    filter
+
+IF the command success the raw unparsed JSON of the metadata is returned.
+
+    my $raw_metadata_json=$virani_client->(start=>$start, end=>$end, filter=>$filter);
+
 =cut
 
 sub fetch {
@@ -88,8 +140,8 @@ sub fetch {
 		$opts{type} = 'tcpdump';
 	}
 
-	if (!defined($opts{file})) {
-		$opts{file}='out.pcap';
+	if ( !defined( $opts{file} ) ) {
+		$opts{file} = 'out.pcap';
 	}
 
 	# basic sanity checking
@@ -117,46 +169,48 @@ sub fetch {
 		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
 	}
 
-	$opts{filter}=~s/\ /\%20/g;
+	$opts{filter} =~ s/\ /\%20/g;
 
 	# put the url together
 	my $url = $self->{url} . '?start=' . $opts{start}->epoch . '&end=' . $opts{end}->epoch . '&type=' . $opts{type};
 	if ( defined( $self->{apikey} ) ) {
 		$url = $url . '&apikey=' . $self->{apikey};
 	}
+	if ( defined( $opts{set} ) ) {
+		$url = $url . '&set=' . $opts{set};
+	}
 	$url = $url . '&bpf=' . $opts{filter};
 
 	# get the PCAP
 	my $res;
-	eval{
-		$res=$ua->request(GET $url);
-	};
+	eval { $res = $ua->request( GET $url); };
 	if ($@) {
-		die('Fetch failed... '.$@);
+		die( 'Fetch failed... ' . $@ );
 	}
-	if ($res->is_success) {
-		my $pcap=$res->decoded_content;
-		write_file($opts{file}, $pcap)|| die('PCAP write to "'.$opts{file}.'" failed... '.$@);
-	}else {
-		die('Fetch failed... '.$url.' ... '.$res->status_line.' ... '.$res->decoded_content);
+	if ( $res->is_success ) {
+		my $pcap = $res->decoded_content;
+		write_file( $opts{file}, $pcap ) || die( 'PCAP write to "' . $opts{file} . '" failed... ' . $@ );
+	}
+	else {
+		die( 'Fetch failed... ' . $url . ' ... ' . $res->status_line . ' ... ' . $res->decoded_content );
 	}
 
 	# get the meta
-	$url=$url.'&get_meta=1';
-	eval{
-		$res=$ua->request(GET $url);
-	};
+	$url = $url . '&get_meta=1';
+	my $raw_json;
+	eval { $res = $ua->request( GET $url); };
 	if ($@) {
-		die('Fetch failed... '.$@);
+		die( 'Fetch failed... ' . $@ );
 	}
-	if ($res->is_success) {
-		my $raw_json=$res->decoded_content;
-		print "Metadata...\n".$raw_json;
-	}else {
-		die('Fetch failed... '.$url.' ... '.$res->status_line.' ... '.$res->decoded_content);
+	if ( $res->is_success ) {
+		$raw_json = $res->decoded_content;
+		print "Metadata...\n" . $raw_json;
+	}
+	else {
+		die( 'Fetch failed... ' . $url . ' ... ' . $res->status_line . ' ... ' . $res->decoded_content );
 	}
 
-	return;
+	return $raw_json;
 }
 
 =head1 AUTHOR
