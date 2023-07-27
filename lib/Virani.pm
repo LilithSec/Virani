@@ -73,7 +73,7 @@ sub new_from_conf {
 	}
 
 	return Virani->new( %{$toml} );
-}
+} ## end sub new_from_conf
 
 =head2 new
 
@@ -155,15 +155,13 @@ sub new {
 
 	if ( defined( $opts{allowed_subnets} ) && ref( $opts{allowed_subnets} ) eq 'ARRAY' ) {
 		$self->{allowed_subnets} = $opts{allowed_subnets};
-	}
-	elsif ( defined( $opts{allowed_subnets} ) && ref( $opts{allowed_subnets} ) ne 'ARRAY' ) {
+	} elsif ( defined( $opts{allowed_subnets} ) && ref( $opts{allowed_subnets} ) ne 'ARRAY' ) {
 		die("$opts{allowed_subnets} defined, but not a array");
 	}
 
 	if ( defined( $opts{sets} ) && ref( $opts{sets} ) eq 'HASH' ) {
 		$self->{sets} = $opts{sets};
-	}
-	elsif ( defined( $opts{sets} ) && ref( $opts{allowed_subnets} ) ne 'HASH' ) {
+	} elsif ( defined( $opts{sets} ) && ref( $opts{allowed_subnets} ) ne 'HASH' ) {
 		die("$opts{sets} defined, but not a hash");
 	}
 
@@ -177,7 +175,7 @@ sub new {
 	}
 
 	return $self;
-}
+} ## end sub new
 
 =head2 filter_clean
 
@@ -216,7 +214,7 @@ sub filter_clean {
 	$string =~ s/\s\s+/ /g;
 
 	return $string;
-}
+} ## end sub filter_clean
 
 =head1 check_apikey
 
@@ -253,7 +251,7 @@ sub check_apikey {
 	}
 
 	return 1;
-}
+} ## end sub check_apikey
 
 =head1 check_remote_ip
 
@@ -282,8 +280,7 @@ sub check_remote_ip {
 	eval { $allowed_subnets = subnet_matcher( @{ $self->{allowed_subnets} } ); };
 	if ($@) {
 		die( 'Failed it init subnet matcher... ' . $@ );
-	}
-	elsif ( !defined($allowed_subnets) ) {
+	} elsif ( !defined($allowed_subnets) ) {
 		die('Failed it init subnet matcher... sub_matcher returned undef');
 	}
 
@@ -292,7 +289,7 @@ sub check_remote_ip {
 	}
 
 	return 0;
-}
+} ## end sub check_remote_ip
 
 =head1 check_type
 
@@ -319,7 +316,7 @@ sub check_type {
 	}
 
 	return 1;
-}
+} ## end sub check_type
 
 =head2 get_default_set
 
@@ -367,17 +364,13 @@ sub get_cache_file {
 	# basic sanity checking
 	if ( !defined( $opts{start} ) ) {
 		die('$opts{start} not defined');
-	}
-	elsif ( !defined( $opts{end} ) ) {
+	} elsif ( !defined( $opts{end} ) ) {
 		die('$opts{start} not defined');
-	}
-	elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
+	} elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
 		die('$opts{start} is not a Time::Piece object');
-	}
-	elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
+	} elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
 		die('$opts{end} is not a Time::Piece object');
-	}
-	elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
+	} elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
 		die('$opts{padding} is not numeric');
 	}
 
@@ -392,11 +385,9 @@ sub get_cache_file {
 	# make sure the set exists
 	if ( !defined( $self->{sets}->{ $opts{set} } ) ) {
 		die( 'The set "' . $opts{set} . '" is not defined' );
-	}
-	elsif ( !defined( $self->{sets}->{ $opts{set} }{path} ) ) {
+	} elsif ( !defined( $self->{sets}->{ $opts{set} }{path} ) ) {
 		die( 'The path for set "' . $opts{set} . '" is not defined' );
-	}
-	elsif ( !-d $self->{sets}->{ $opts{set} }{path} ) {
+	} elsif ( !-d $self->{sets}->{ $opts{set} }{path} ) {
 		die(      'The path for set "'
 				. $opts{set} . '", "'
 				. $self->{sets}->{ $opts{set} }{path}
@@ -430,12 +421,10 @@ sub get_cache_file {
 		# figure what what to use as the cache file
 		if ( $opts{no_cache} ) {
 			$cache_file = $opts{file};
-		}
-		elsif ( $opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
+		} elsif ( $opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
 			$cache_file = $opts{file};
 
-		}
-		elsif ( $opts{auto_no_cache} && ( -d $self->{cache} || -w $self->{cache} ) ) {
+		} elsif ( $opts{auto_no_cache} && ( -d $self->{cache} || -w $self->{cache} ) ) {
 			$cache_file
 				= $self->{cache} . '/'
 				. $opts{set} . '-'
@@ -443,19 +432,16 @@ sub get_cache_file {
 				. $opts{start}->epoch . '-'
 				. $opts{end}->epoch . "-"
 				. lc( md5_hex( $opts{filter} ) );
-		}
-		elsif ( !$opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
+		} elsif ( !$opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
 			die(      '$opts{auto_no_cache} is false and $opts{no_cache} is false, but the cache dir "'
 					. $self->{dir}
 					. '" does not exist, is not a dir, or is not writable' );
 		}
-	}
-	else {
+	} else {
 		# make sure the cache is usable
 		if ( !-d $self->{cache} ) {
 			die( 'Cache dir,"' . $self->{cache} . '", does not exist or is not a dir' );
-		}
-		elsif ( !-w $self->{cache} ) {
+		} elsif ( !-w $self->{cache} ) {
 			die( 'Cache dir,"' . $self->{cache} . '", is not writable' );
 		}
 
@@ -466,10 +452,10 @@ sub get_cache_file {
 			. $opts{type} . '-'
 			. $opts{end}->epoch . "-"
 			. lc( md5_hex( $opts{filter} ) );
-	}
+	} ## end else [ if ( defined( $opts{file} ) ) ]
 
 	return $cache_file;
-}
+} ## end sub get_cache_file
 
 =head2 get_pcap_local
 
@@ -563,17 +549,13 @@ sub get_pcap_local {
 	# basic sanity checking
 	if ( !defined( $opts{start} ) ) {
 		die('$opts{start} not defined');
-	}
-	elsif ( !defined( $opts{end} ) ) {
+	} elsif ( !defined( $opts{end} ) ) {
 		die('$opts{start} not defined');
-	}
-	elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
+	} elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
 		die('$opts{start} is not a Time::Piece object');
-	}
-	elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
+	} elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
 		die('$opts{end} is not a Time::Piece object');
-	}
-	elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
+	} elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
 		die('$opts{padding} is not numeric');
 	}
 
@@ -581,8 +563,8 @@ sub get_pcap_local {
 		$opts{auto_no_cache} = 1;
 	}
 
-	if (!defined($opts{no_cache})) {
-		$opts{no_cache}=0;
+	if ( !defined( $opts{no_cache} ) ) {
+		$opts{no_cache} = 0;
 	}
 
 	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
@@ -592,11 +574,9 @@ sub get_pcap_local {
 	# make sure the set exists
 	if ( !defined( $self->{sets}->{ $opts{set} } ) ) {
 		die( 'The set "' . $opts{set} . '" is not defined' );
-	}
-	elsif ( !defined( $self->{sets}->{ $opts{set} }{path} ) ) {
+	} elsif ( !defined( $self->{sets}->{ $opts{set} }{path} ) ) {
 		die( 'The path for set "' . $opts{set} . '" is not defined' );
-	}
-	elsif ( !-d $self->{sets}->{ $opts{set} }{path} ) {
+	} elsif ( !-d $self->{sets}->{ $opts{set} }{path} ) {
 		die(      'The path for set "'
 				. $opts{set} . '", "'
 				. $self->{sets}->{ $opts{set} }{path}
@@ -622,9 +602,9 @@ sub get_pcap_local {
 	}
 
 	# if applicable return the cache file
-	my $return_cache=0;
+	my $return_cache = 0;
 	if (
-		defined( $opts{file} )
+		   defined( $opts{file} )
 		&& $opts{file} ne $cache_file
 		&& !$opts{no_cache}
 		&& -f $cache_file
@@ -632,18 +612,17 @@ sub get_pcap_local {
 
 		)
 	{
-		$return_cache=1;
-	}
-	elsif ( !defined( $opts{file} ) && !$opts{no_cache} && -f $cache_file && -f $cache_file . '.json' ) {
-		$return_cache=1;
+		$return_cache = 1;
+	} elsif ( !defined( $opts{file} ) && !$opts{no_cache} && -f $cache_file && -f $cache_file . '.json' ) {
+		$return_cache = 1;
 	}
 	if ($return_cache) {
-		my $cache_message='Already cached... "' . $cache_file . '"';
-		if (defined($opts{file}) && $opts{file} ne $cache_file ) {
-			$cache_message=$cache_message.' -> "' . $opts{file} . '"';
+		my $cache_message = 'Already cached... "' . $cache_file . '"';
+		if ( defined( $opts{file} ) && $opts{file} ne $cache_file ) {
+			$cache_message = $cache_message . ' -> "' . $opts{file} . '"';
 		}
-		$self->verbose( 'info',  $cache_message);
-		if (defined($opts{file})) {
+		$self->verbose( 'info', $cache_message );
+		if ( defined( $opts{file} ) ) {
 			cp( $cache_file, $opts{file} );
 		}
 		my $to_return;
@@ -656,7 +635,7 @@ sub get_pcap_local {
 		}
 		$to_return->{using_cache} = 1;
 		return $to_return;
-	}
+	} ## end if ($return_cache)
 
 	# check it here incase the config includes something off
 	if ( $opts{padding} !~ /^[0-9]+$/ ) {
@@ -680,8 +659,7 @@ sub get_pcap_local {
 	my $ts_regexp;
 	if ( defined( $self->{sets}{ $opts{set} }{regex} ) ) {
 		$ts_regexp = $self->{sets}{ $opts{set} }{regex};
-	}
-	else {
+	} else {
 		$ts_regexp = $self->{default_regex};
 	}
 
@@ -715,6 +693,8 @@ sub get_pcap_local {
 	};
 
 	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
+	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') );
+	$self->verbose( 'info', 'End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') );
 
 	# used for tracking the files to cleanup
 	my @tmp_files;
@@ -738,8 +718,7 @@ sub get_pcap_local {
 				command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{filter} ],
 				verbose => 0
 			);
-		}
-		else {
+		} else {
 			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
 				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $opts{filter} ],
 				verbose => 0
@@ -756,8 +735,7 @@ sub get_pcap_local {
 				= stat($tmp_file);
 			$to_return->{tmp_size} += $size;
 
-		}
-		else {
+		} else {
 			$to_return->{failed}{$pcap} = $error_message;
 			$to_return->{failed_count}++;
 			$to_return->{failed_size} += $size;
@@ -768,7 +746,7 @@ sub get_pcap_local {
 		}
 
 		$to_return->{pcap_count}++;
-	}
+	} ## end foreach my $pcap ( @{$to_check} )
 
 	# only try merging if we had more than one success
 	if ( $to_return->{success_count} > 0 ) {
@@ -781,13 +759,11 @@ sub get_pcap_local {
 		);
 		if ($success) {
 			$self->verbose( 'info', "PCAPs merged into " . $cache_file );
-		}
-		else {
+		} else {
 			# if verbose print different messages if mergecap generated a ouput file or not when it fialed
 			if ( -f $cache_file ) {
 				$self->verbose( 'warning', "PCAPs partially(output file generated) failed " . $error_message );
-			}
-			else {
+			} else {
 				$self->verbose( 'err', "PCAPs merge completely(output file not generated) failed " . $error_message );
 			}
 		}
@@ -804,8 +780,7 @@ sub get_pcap_local {
 			$to_return->{final_size} = $size;
 		}
 
-	}
-	else {
+	} else {
 		$self->verbose( 'err', "No PCAPs to merge" );
 	}
 
@@ -835,7 +810,7 @@ sub get_pcap_local {
 	$to_return->{using_cache} = 0;
 
 	return $to_return;
-}
+} ## end sub get_pcap_local
 
 =head2 get_set_path
 
@@ -865,7 +840,7 @@ sub get_set_path {
 	}
 
 	return $self->{sets}{$set}{path};
-}
+} ## end sub get_set_path
 
 =head2 set_verbose
 
@@ -936,14 +911,13 @@ sub verbose {
 			openlog( 'viarni', undef, 'daemon' );
 			syslog( $level, $string );
 			closelog();
-		}
-		else {
+		} else {
 			print $string. "\n";
 		}
 	}
 
 	return;
-}
+} ## end sub verbose
 
 =head2 CONFIG
 
