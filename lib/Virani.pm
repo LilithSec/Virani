@@ -693,8 +693,8 @@ sub get_pcap_local {
 	};
 
 	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
-	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') );
-	$self->verbose( 'info', 'End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') );
+	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
+	$self->verbose( 'info', 'End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{end}->epoch );
 
 	# used for tracking the files to cleanup
 	my @tmp_files;
