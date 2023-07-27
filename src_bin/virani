@@ -222,7 +222,7 @@ if ( !defined($start) ) {
 	die('No start time set via -s');
 }
 elsif ( !defined($end) ) {
-	die('No start time set via -s');
+	die('No end time set via -e');
 }
 
 if ($quiet) {
