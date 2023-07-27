@@ -121,7 +121,7 @@ use Virani::Client;
 use JSON;
 
 sub version {
-	print 'viarni v. '.$Virani::VERSION."\n";
+	print 'viarni v. ' . $Virani::VERSION . "\n";
 }
 
 sub help {
@@ -164,7 +164,7 @@ sub help {
 -k                Do not check the SSL cert for HTTPS for remote.
 
 ';
-}
+} ## end sub help
 
 # get the cli optiosn
 my $help    = 0;
@@ -218,10 +218,16 @@ if ($version) {
 	exit;
 }
 
+# if not specified via -f use ARGV as for the filter
+if ( !defined($filter) ) {
+	if ( defined( $ARGV[0] ) ) {
+		$filter = join( ' ', @ARGV );
+	}
+}
+
 if ( !defined($start) ) {
 	die('No start time set via -s');
-}
-elsif ( !defined($end) ) {
+} elsif ( !defined($end) ) {
 	die('No end time set via -e');
 }
 
@@ -266,26 +272,20 @@ if ( !$remote ) {
 	}
 
 	exit 0;
-}
-else {
+} else {
 	# check to see if remote is a config file
 	my $config_file;
 	if ( -f $remote ) {
 		$config_file = $remote;
-	}
-	elsif ( -f $remote . '.toml' ) {
+	} elsif ( -f $remote . '.toml' ) {
 		$config_file = $remote . '.toml';
-	}
-	elsif ( -f '/usr/local/etc/virani.d/' . $remote ) {
+	} elsif ( -f '/usr/local/etc/virani.d/' . $remote ) {
 		$config_file = '/usr/local/etc/virani.d/' . $remote;
-	}
-	elsif ( -f '/usr/local/etc/virani.d/' . $remote . '.toml' ) {
+	} elsif ( -f '/usr/local/etc/virani.d/' . $remote . '.toml' ) {
 		$config_file = '/usr/local/etc/virani.d/' . $remote . '.toml';
-	}
-	elsif ( -f '/etc/virani.d/' . $remote ) {
+	} elsif ( -f '/etc/virani.d/' . $remote ) {
 		$config_file = '/etc/virani.d/' . $remote;
-	}
-	elsif ( -f '/etc/virani.d/' . $remote . '.toml' ) {
+	} elsif ( -f '/etc/virani.d/' . $remote . '.toml' ) {
 		$config_file = '/etc/virani.d/' . $remote . '.toml';
 	}
 
@@ -298,35 +298,29 @@ else {
 		unless ($toml) {
 			die( "Error parsing '" . $config_file . "':" . $err );
 		}
-	}
-	elsif ( $remote =~ /^[Hh][Tt][Tt][Pp][Ss]*\:\/\// ) {
+	} elsif ( $remote =~ /^[Hh][Tt][Tt][Pp][Ss]*\:\/\// ) {
 		print 'URL: ' . $remote . "\n";
 		$url = $remote;
-	}
-	else {
+	} else {
 		die( "'" . $remote . "' does not appear to be a config file or a HTTP or HTTPS URL" );
 	}
 
 	if ( defined($apikey) ) {
 		print "API key: specified via -a\n";
-	}
-	elsif ( defined( $ENV{virani_api_key} ) ) {
+	} elsif ( defined( $ENV{virani_api_key} ) ) {
 		print 'API key: specified via $ENV{virani_api_key}' . "\n";
 		$apikey = $ENV{virani_api_key};
-	}
-	elsif ( defined($toml) && defined( $toml->{apikey} ) ) {
+	} elsif ( defined($toml) && defined( $toml->{apikey} ) ) {
 		print 'API key: specified via config file at ' . $config_file . "\n";
 		$apikey = $toml->{apikey};
 	}
 
 	if ( defined($timeout) ) {
 		print "Timeout: specified via --timeout\n";
-	}
-	elsif ( defined( $ENV{virani_timeout} ) ) {
+	} elsif ( defined( $ENV{virani_timeout} ) ) {
 		print 'Timeout: specified via $ENV{virani_timeout}' . "\n";
 		$timeout = $ENV{virani_timeout};
-	}
-	elsif ( defined($toml) && defined( $toml->{timeout} ) ) {
+	} elsif ( defined($toml) && defined( $toml->{timeout} ) ) {
 		print 'Timeout: specified via config file at ' . $config_file . "\n";
 		$timeout = $toml->{timeout};
 	}
@@ -334,8 +328,7 @@ else {
 	if ( !defined($url) ) {
 		if ( defined( $toml->{url} ) ) {
 			$url = $toml->{url};
-		}
-		else {
+		} else {
 			die( "No url specified in '" . $config_file . "'" );
 		}
 	}
@@ -355,4 +348,4 @@ else {
 	print 'Written to ' . $write . "\n";
 
 	exit 0;
-}
+} ## end else [ if ( !$remote ) ]
