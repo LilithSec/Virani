@@ -121,7 +121,7 @@ use Virani::Client;
 use JSON;
 
 sub version {
-	print "viarni v. 0.0.1\n";
+	print 'viarni v. '.$Virani::VERSION."\n";
 }
 
 sub help {
