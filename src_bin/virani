@@ -240,12 +240,12 @@ if ($verify_hostname_flag) {
 }
 
 my $start_obj;
-eval { $start_obj = Time::Piece::Guess->guess_to_object($start); };
+eval { $start_obj = Time::Piece::Guess->guess_to_object($start, 1); };
 if ( $@ || !defined($start_obj) ) {
 	die( 'Failed to parse the start stamp,"' . $start . '",' );
 }
 my $end_obj;
-eval { $end_obj = Time::Piece::Guess->guess_to_object($end); };
+eval { $end_obj = Time::Piece::Guess->guess_to_object($end, 1); };
 if ( $@ || !defined($end_obj) ) {
 	die( 'Failed to parse the end timestamp,"' . $end . '",' );
 }
