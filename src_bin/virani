@@ -9,8 +9,14 @@ virani - PCAP fetch tool for use with FPCs that save to PCAP format.
 virani B<-s> <start> B<-e> <end> B<-f> <filter> [B<-t> <type>] [B<-t> <set>]
 [B<--config> <file>] [B<-w> <output] [B<--nc>]
 
+virani B<-s> <start> B<-e> <end> [B<-t> <type>] [B<-t> <set>]
+[B<--config> <file>] [B<-w> <output] [B<--nc>] <filter>
+
 virani B<-r> <remote> B<-s> <start> B<-e> <end> B<-f> <filter> [B<-t> <type>] [B<-t> <set>]
 B<--config> <file>] [B<-w> <output] [B<--nc>] [B<-a> <apikey>] [B<-k>]
+
+virani B<-r> <remote> B<-s> <start> B<-e> <end> [B<-t> <type>] [B<-t> <set>]
+B<--config> <file>] [B<-w> <output] [B<--nc>] [B<-a> <apikey>] [B<-k>] <filter>
 
 =head1 DESCRIPTION
 
@@ -63,6 +69,11 @@ API key for remote URL if needed.
 =head2 -f <filter>
 
 Filter for use with tshark or tcpdump.
+
+If this is undef, ARGV will be used instead for filter info.
+
+If filter points to a file, teasted via -f, then that file will be
+read in and used the filter.
 
 =head2 -t <type>
 
@@ -223,6 +234,34 @@ if ( !defined($filter) ) {
 	if ( defined( $ARGV[0] ) ) {
 		$filter = join( ' ', @ARGV );
 	}
+}
+
+# remove ending and trailing spaces
+$filter=~s/^\s+//;
+$filter=~s/\s+$//;
+
+# if the filter is file, read the file and use it as the filter
+# once read in new lines will be replaced with  spaces and commented lines removed
+if (-f $filter) {
+	my $raw_filter;
+	eval {
+		$raw_filter=read_file($filter);
+	};
+	if ($@) {
+		die('Failed to read "'.$filter.'" ... '.$@);
+	}
+	$filter='';
+	# split the read data appart, removing blank lines and lines with just
+	foreach my $line (grep(!/^\s*\#/, grep(!/^\s*$/, split(/\n/, $raw_filter)) )) {
+		# remove leading and trailing white space
+		$line=~s/^\s+//;
+		$line=~s/\s+$//;
+		# comments at the end of a line
+		$line=~s/\#.*$//;
+		$filter=$filter.' '.$line;
+	}
+	# remove the space that the start that the code above will result in
+	$filter=~s/^\ //;
 }
 
 if ( !defined($start) ) {
