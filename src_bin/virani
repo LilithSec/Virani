@@ -237,32 +237,30 @@ if ( !defined($filter) ) {
 }
 
 # remove ending and trailing spaces
-$filter=~s/^\s+//;
-$filter=~s/\s+$//;
+$filter =~ s/^\s+//;
+$filter =~ s/\s+$//;
 
 # if the filter is file, read the file and use it as the filter
 # once read in new lines will be replaced with  spaces and commented lines removed
-if (-f $filter) {
+if ( -f $filter ) {
 	my $raw_filter;
-	eval {
-		$raw_filter=read_file($filter);
-	};
+	eval { $raw_filter = read_file($filter); };
 	if ($@) {
-		die('Failed to read "'.$filter.'" ... '.$@);
+		die( 'Failed to read "' . $filter . '" ... ' . $@ );
 	}
-	$filter='';
-	# split the read data appart, removing blank lines and lines with just
-	foreach my $line (grep(!/^\s*\#/, grep(!/^\s*$/, split(/\n/, $raw_filter)) )) {
+	$filter = '';
+	# split the read data appart, removing blank lines and lines with juts
+	foreach my $line ( grep( !/^\s*\#/, grep( !/^\s*$/, split( /\n/, $raw_filter ) ) ) ) {
 		# remove leading and trailing white space
-		$line=~s/^\s+//;
-		$line=~s/\s+$//;
+		$line =~ s/^\s+//;
+		$line =~ s/\s+$//;
 		# comments at the end of a line
-		$line=~s/\#.*$//;
-		$filter=$filter.' '.$line;
+		$line =~ s/\#.*$//;
+		$filter = $filter . ' ' . $line;
 	}
 	# remove the space that the start that the code above will result in
-	$filter=~s/^\ //;
-}
+	$filter =~ s/^\ //;
+} ## end if ( -f $filter )
 
 if ( !defined($start) ) {
 	die('No start time set via -s');
@@ -279,12 +277,12 @@ if ($verify_hostname_flag) {
 }
 
 my $start_obj;
-eval { $start_obj = Time::Piece::Guess->guess_to_object($start, 1); };
+eval { $start_obj = Time::Piece::Guess->guess_to_object( $start, 1 ); };
 if ( $@ || !defined($start_obj) ) {
 	die( 'Failed to parse the start stamp,"' . $start . '",' );
 }
 my $end_obj;
-eval { $end_obj = Time::Piece::Guess->guess_to_object($end, 1); };
+eval { $end_obj = Time::Piece::Guess->guess_to_object( $end, 1 ); };
 if ( $@ || !defined($end_obj) ) {
 	die( 'Failed to parse the end timestamp,"' . $end . '",' );
 }
