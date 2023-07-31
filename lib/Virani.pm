@@ -21,11 +21,11 @@ Virani - PCAP retrieval for a FPC setup writing to PCAP files.
 
 =head1 VERSION
 
-Version 0.1.0
+Version 0.1.1
 
 =cut
 
-our $VERSION = '0.1.0';
+our $VERSION = '0.1.1';
 
 =head1 SYNOPSIS
 
