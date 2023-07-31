@@ -237,8 +237,12 @@ if ( !defined($filter) ) {
 }
 
 # remove ending and trailing spaces
-$filter =~ s/^\s+//;
-$filter =~ s/\s+$//;
+if (defined($filter)){
+	$filter =~ s/^\s+//;
+	$filter =~ s/\s+$//;
+}else {
+	$filter='';
+}
 
 # if the filter is file, read the file and use it as the filter
 # once read in new lines will be replaced with  spaces and commented lines removed
