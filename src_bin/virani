@@ -307,7 +307,7 @@ elsif ( defined($buffer) ) {
 	}
 
 	# apply the offsets
-	$start_obj = $start_obj + $buffer;
+	$start_obj = $start_obj - $buffer;
 	$end_obj   = $end_obj + $buffer;
 
 	# get the new start time
