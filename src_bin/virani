@@ -6,16 +6,16 @@ virani - PCAP fetch tool for use with FPCs that save to PCAP format.
 
 =head1 SYNOPSIS
 
-virani B<-s> <start> B<-e> <end> B<-f> <filter> [B<-t> <type>] [B<-t> <set>]
+virani B<-s> <start> B<-e> <end> B<-f> <filter> [B<-t> <type>] [B<--set> <set>]
 [B<--config> <file>] [B<-w> <output] [B<--nc>]
 
-virani B<-s> <start> B<-e> <end> [B<-t> <type>] [B<-t> <set>]
+virani B<-s> <start> B<-e> <end> [B<-t> <type>] [B<--set> <set>]
 [B<--config> <file>] [B<-w> <output] [B<--nc>] <filter>
 
-virani B<-r> <remote> B<-s> <start> B<-e> <end> B<-f> <filter> [B<-t> <type>] [B<-t> <set>]
+virani B<-r> <remote> B<-s> <start> B<-e> <end> B<-f> <filter> [B<-t> <type>] [B<--set> <set>]
 B<--config> <file>] [B<-w> <output] [B<--nc>] [B<-a> <apikey>] [B<-k>]
 
-virani B<-r> <remote> B<-s> <start> B<-e> <end> [B<-t> <type>] [B<-t> <set>]
+virani B<-r> <remote> B<-s> <start> B<-e> <end> [B<-t> <type>] [B<--sett> <set>]
 B<--config> <file>] [B<-w> <output] [B<--nc>] [B<-a> <apikey>] [B<-k>] <filter>
 
 =head1 DESCRIPTION
@@ -81,7 +81,7 @@ tcpdump or tshark
 
 Default :: tcpdump
 
-=head2 -t <set>
+=head2 --set <set>
 
 Set to use. If undef, uses whatever the default is.
 
@@ -155,7 +155,7 @@ sub help {
 -t <type>         tcpdump or tshark
                   Default :: tcpdump
 
--t <set>          Set to use. If undef, uses whatever the default is.
+--set <set>      Set to use. If undef, uses whatever the default is.
                   Default :: undef
 
 --config <config> Config file to use.
@@ -334,8 +334,9 @@ if ( !$remote ) {
 	if ( defined($config_file) ) {
 		print 'Config File: ' . $config_file;
 
+		my $err;
 		my $raw_toml = read_file($config_file) || die( 'Failed to read "' . $config_file . '"' );
-		my ( $toml, $err ) = from_toml($raw_toml);
+		( $toml, $err ) = from_toml($raw_toml);
 		unless ($toml) {
 			die( "Error parsing '" . $config_file . "':" . $err );
 		}
