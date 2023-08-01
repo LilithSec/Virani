@@ -227,6 +227,7 @@ GetOptions(
 	't=s'       => \$type,
 	'k'         => \$verify_hostname_flag,
 	'timeout=s' => \$timeout,
+	'buffer=s'  => \$buffer,
 );
 
 if ($help) {
@@ -310,8 +311,8 @@ elsif ( defined($buffer) ) {
 	$end_obj   = $end_obj + $buffer;
 
 	# get the new start time
-	$start=$start_obj->epoch;
-	$end=$end_obj->epoch;
+	$start = $start_obj->epoch;
+	$end   = $end_obj->epoch;
 } ## end elsif ( defined($buffer) )
 
 my $start_obj;
