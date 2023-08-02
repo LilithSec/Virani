@@ -474,7 +474,7 @@ Generates a PCAP locally and returns the path to it.
         - Default :: ''
 
     - set :: The PCAP set to use. Will use what ever the default is set to if undef or blank.
-        - Default :: $viarni->get_default_set
+        - Default :: $virani->get_default_set
 
     - file :: The file to output to. If undef it just returns the path to
               the cache file.
@@ -820,7 +820,7 @@ If no set is given, the default is used.
 
 Will return undef if the set does not exist or if the set does not have a path defined.
 
-    my $path=$viarni->get_set_path($set);
+    my $path=$virani->get_set_path($set);
 
 =cut
 
@@ -865,10 +865,10 @@ sub set_verbose {
 Set if it should be verbose or not.
 
     # send verbose messages to syslog
-    $viarni->set_verbose_to_syslog(1);
+    $virani->set_verbose_to_syslog(1);
 
     # do not send verbose messages to syslog
-    $viarni->set_verbose_to_syslog(0);
+    $virani->set_verbose_to_syslog(0);
 
 =cut
 
@@ -908,7 +908,7 @@ sub verbose {
 
 	if ( $self->{verbose} ) {
 		if ( $self->{verbose_to_syslog} ) {
-			openlog( 'viarni', undef, 'daemon' );
+			openlog( 'virani', undef, 'daemon' );
 			syslog( $level, $string );
 			closelog();
 		} else {
