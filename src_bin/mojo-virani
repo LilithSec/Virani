@@ -69,6 +69,10 @@ sub the_stuff {
 	# get the start value and make sure it is sane
 	my $start_obj;
 	my $start = $c->param('start');
+	my $stime = $c->param('stime');
+	if ( defined($stime) ) {
+		$start = $stime;
+	}
 	if ( !defined($start) ) {
 		$c->render( text => "No start value specified\n", status => 400, );
 		$virani->verbose( 'err', 'Start time not specified' );
@@ -83,7 +87,11 @@ sub the_stuff {
 
 	# get the end value and make sure it is sane
 	my $end_obj;
-	my $end = $c->param('end');
+	my $end   = $c->param('end');
+	my $etime = $c->param('etime');
+	if ( defined($etime) ) {
+		$end = $etime;
+	}
 	if ( !defined($end) ) {
 		$c->render( text => "No end value specified\n", status => 400, );
 		$virani->verbose( 'err', 'End time not specified' );
@@ -126,8 +134,7 @@ sub the_stuff {
 	$get_meta = $c->param('get_meta');
 	if ($get_meta) {
 		$get_meta = 1;
-	}
-	else {
+	} else {
 		$get_meta = 0;
 	}
 	$virani->verbose( 'info', 'get_meta: ' . $get_meta );
@@ -168,25 +175,25 @@ sub the_stuff {
 					. ', failed_count: '
 					. $returned->{failed_count} );
 			return;
-		}
+		} ## end if ( $returned->{pcap_count} == $returned->...)
 		$return_file = $returned->{path};
-	}else {
-		eval{
+	} else {
+		eval {
 			$return_file = $virani->get_cache_file(
-												   set    => $set,
-												   start  => $start_obj,
-												   end    => $end_obj,
-												   filter => $bpf,
-												   type   => $type,
-												   );
-			$return_file=$return_file.'.json';
+				set    => $set,
+				start  => $start_obj,
+				end    => $end_obj,
+				filter => $bpf,
+				type   => $type,
+			);
+			$return_file = $return_file . '.json';
 		};
 		if ($@) {
 			$c->render( text => "Getting metadata JSON failed... please see syslog\n", status => 400, );
 			return;
 		}
-		$virani->verbose( 'info', 'returning '.$return_file);
-	}
+		$virani->verbose( 'info', 'returning ' . $return_file );
+	} ## end else [ if ( !$get_meta ) ]
 
 	# if this fails, it is a old version of Mojolicious
 	eval { $c->reply->file($return_file); };
@@ -197,6 +204,6 @@ sub the_stuff {
 	}
 
 	return;
-}
+} ## end sub the_stuff
 
 app->start;
