@@ -1,5 +1,15 @@
 Revision history for Virani
 
+0.2.0  2023-07-31/17:30
+        -mojo-virani sets content type to application/x-download
+        -misc verbosity fixes/cleanup
+        -remove needlessly copying the cache file
+        -fix typo in name used for syslog messages
+        -add etime/stime aliases for start/end args for mojo-virani
+        -add --buffer to virani
+        -enable special for Time::Piece::Guess
+        -misc doc cleanups/updates
+
 0.1.1  2023-07-31/17:30
         -Fix the handling when filter is undef.
         -Minor doc updates.
