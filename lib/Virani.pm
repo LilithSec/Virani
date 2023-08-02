@@ -558,6 +558,8 @@ sub get_pcap_local {
 	} elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
 		die('$opts{padding} is not numeric');
 	}
+	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
+	$self->verbose( 'info', 'End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{end}->epoch );
 
 	if ( !defined( $opts{auto_no_cache} ) ) {
 		$opts{auto_no_cache} = 1;
@@ -593,6 +595,7 @@ sub get_pcap_local {
 
 	# clean the filter
 	$opts{filter} = $self->filter_clean( $opts{filter} );
+	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
 
 	# get the cache file to use
 	my $cache_file;
@@ -645,6 +648,9 @@ sub get_pcap_local {
 	# set the padding
 	my $start = $opts{start} - $opts{padding};
 	my $end   = $opts{end} + $opts{padding};
+	$self->verbose( 'info',
+		'Padded Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
+	$self->verbose( 'info', 'Padded End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{end}->epoch );
 
 	# get the set
 	my $set_path = $self->get_set_path( $opts{set} );
@@ -691,10 +697,6 @@ sub get_pcap_local {
 		end_s         => => $opts{end}->epoch,
 		end           => $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z'),
 	};
-
-	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
-	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
-	$self->verbose( 'info', 'End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{end}->epoch );
 
 	# used for tracking the files to cleanup
 	my @tmp_files;
