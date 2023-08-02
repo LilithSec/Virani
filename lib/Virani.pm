@@ -622,7 +622,7 @@ sub get_pcap_local {
 			$cache_message = $cache_message . ' -> "' . $opts{file} . '"';
 		}
 		$self->verbose( 'info', $cache_message );
-		if ( defined( $opts{file} ) ) {
+		if ( defined( $opts{file} ) && $opts{file} ne $cache_file ) {
 			cp( $cache_file, $opts{file} );
 		}
 		my $to_return;

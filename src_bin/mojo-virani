@@ -156,6 +156,7 @@ sub the_stuff {
 			$virani->verbose( 'err', 'get_pcap_local failed: ' . $@ );
 			return;
 		}
+		$virani->verbose( 'info', 'get_pcap_local finished: ' );
 
 		# if there are more than 0 found pcaps and the count is the same as the failed cound,
 		# then generation of them all failed
@@ -192,8 +193,8 @@ sub the_stuff {
 			$c->render( text => "Getting metadata JSON failed... please see syslog\n", status => 400, );
 			return;
 		}
-		$virani->verbose( 'info', 'returning ' . $return_file );
 	} ## end else [ if ( !$get_meta ) ]
+	$virani->verbose( 'info', 'returning ' . $return_file );
 
 	# if this fails, it is a old version of Mojolicious
 	eval { $c->reply->file($return_file); };
@@ -201,6 +202,8 @@ sub the_stuff {
 		use File::Slurp;
 		my $raw_pcap = read_file($return_file);
 		$c->render( data => $raw_pcap );
+	}else {
+		$virani->verbose( 'info', 'finished returning ' . $return_file );
 	}
 
 	return;
