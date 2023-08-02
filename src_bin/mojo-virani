@@ -64,7 +64,6 @@ sub the_stuff {
 	if ( !defined($set) or $set eq '' ) {
 		$set = $virani->get_default_set;
 	}
-	$virani->verbose( 'info', 'Set: ' . $set );
 
 	# get the start value and make sure it is sane
 	my $start_obj;
@@ -131,7 +130,6 @@ sub the_stuff {
 		$virani->verbose( 'err', 'BPF not specified or blank' );
 		return;
 	}
-	$virani->verbose( 'info', 'Filter: '.$bpf );
 
 	my $get_meta;
 	$get_meta = $c->param('get_meta');

@@ -545,6 +545,7 @@ sub get_pcap_local {
 	if ( !$self->check_type( $opts{type} ) ) {
 		die( 'type "' . $opts{type} . '" is not a supported type, tcpdump or tshark,' );
 	}
+	$self->verbose( 'info', 'Type: ' . $opts{type} );
 
 	# basic sanity checking
 	if ( !defined( $opts{start} ) ) {
@@ -564,14 +565,17 @@ sub get_pcap_local {
 	if ( !defined( $opts{auto_no_cache} ) ) {
 		$opts{auto_no_cache} = 1;
 	}
+	$self->verbose( 'info', 'auto_no_cache: ' . $opts{auto_no_cache} );
 
 	if ( !defined( $opts{no_cache} ) ) {
 		$opts{no_cache} = 0;
 	}
+	$self->verbose( 'info', 'no_cache: ' . $opts{no_cache} );
 
 	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
 		$opts{set} = $self->get_default_set;
 	}
+	$self->verbose( 'info', 'Set: ' . $opts{set} );
 
 	# make sure the set exists
 	if ( !defined( $self->{sets}->{ $opts{set} } ) ) {
