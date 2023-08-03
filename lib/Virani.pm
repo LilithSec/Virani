@@ -686,10 +686,8 @@ sub get_pcap_local {
 		regex => $ts_regexp,
 	);
 
-	#
-	my $req_end = localtime;
-
-	# The path to return.
+	# The return hash and what will be used for the cache JSON
+	# req_end stuff set later
 	my $to_return = {
 		pcaps         => $to_check,
 		pcap_count    => 0,
@@ -711,9 +709,6 @@ sub get_pcap_local {
 		end           => $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z'),
 		req_start     => $req_start->strftime('%Y-%m-%dT%H:%M:%S%z'),
 		req_start_s   => $req_start->epoch,
-		req_end       => $req_end->strftime('%Y-%m-%dT%H:%M:%S%z'),
-		req_end_s     => $req_end->epoch,
-		req_time      => $req_start->epoch - $req_end->epoch,
 	};
 
 	# used for tracking the files to cleanup
@@ -815,6 +810,12 @@ sub get_pcap_local {
 			. $to_return->{tmp_size}
 			. " final_size="
 			. $to_return->{final_size} );
+
+	# finalize info on how long the request took
+	my $req_end = localtime;
+	$to_return->{req_end}   = $req_end->strftime('%Y-%m-%dT%H:%M:%S%z');
+	$to_return->{req_end_s} = $req_end->epoch;
+	$to_return->{req_time}  = $req_start->epoch - $req_end->epoch;
 
 	$self->verbose( 'info', 'Creating metadata JSON at "' . $cache_file . '.json" ' );
 	my $json     = JSON->new->allow_nonref->pretty->canonical(1);
