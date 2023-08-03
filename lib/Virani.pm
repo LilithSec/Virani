@@ -815,7 +815,7 @@ sub get_pcap_local {
 	my $req_end = localtime;
 	$to_return->{req_end}   = $req_end->strftime('%Y-%m-%dT%H:%M:%S%z');
 	$to_return->{req_end_s} = $req_end->epoch;
-	$to_return->{req_time}  = $req_start->epoch - $req_end->epoch;
+	$to_return->{req_time}  = $req_end->epoch - $req_start->epoch;
 
 	$self->verbose( 'info', 'Creating metadata JSON at "' . $cache_file . '.json" ' );
 	my $json     = JSON->new->allow_nonref->pretty->canonical(1);
