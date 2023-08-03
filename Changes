@@ -1,5 +1,9 @@
 Revision history for Virani
 
+0.3.0  2023-08-03/15:45
+        -add req_start, req_start_s, req_end, req_end_s, and req_time keys to metadata
+        -fix padding handling
+
 0.2.0  2023-08-03/08:45
         -mojo-virani sets content type to application/x-download
         -misc verbosity fixes/cleanup

@@ -22,11 +22,11 @@ Virani - PCAP retrieval for a FPC setup writing to PCAP files.
 
 =head1 VERSION
 
-Version 0.2.0
+Version 0.3.0
 
 =cut
 
-our $VERSION = '0.2.0';
+our $VERSION = '0.3.0';
 
 =head1 SYNOPSIS
 
@@ -530,6 +530,18 @@ The return is a hash reference that includes the following keys.
     - end :: End time in the format '%Y-%m-%dT%H:%M:%S%z'.
 
     - using_cache :: If the cache was used or not.
+
+    - req_start :: Timestamp of when the it started. In the format
+                   %Y-%m-%dT%H:%M:%S%z
+
+    - req_start_s :: Same as req_start, but unixtime.
+
+    - req_end :: Timestamp of when the it finished. In the format
+                 %Y-%m-%dT%H:%M:%S%z
+
+    - req_end_s :: Same as req_end, but unixtime.
+
+    - req_time :: Number of seconds it took.
 
 =cut
 

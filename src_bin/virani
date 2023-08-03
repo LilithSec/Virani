@@ -296,12 +296,12 @@ if ( defined($buffer) && $buffer !~ /^\d+$/ ) {
 	die( '--buffer is set to "' . $buffer . '" which is non-numeric' );
 }    # buffer is numeric, so apply it to the start and end
 elsif ( defined($buffer) ) {
-	my $start_obj = Time::Piece::Guess->guess_to_object($start, 1);
+	my $start_obj = Time::Piece::Guess->guess_to_object( $start, 1 );
 	if ( !defined($start_obj) ) {
 		die( '-s value of "' . $start . '" could not be parsed by Time::Piece::Guess' );
 	}
 
-	my $end_obj = Time::Piece::Guess->guess_to_object($end, 1);
+	my $end_obj = Time::Piece::Guess->guess_to_object( $end, 1 );
 	if ( !defined($end_obj) ) {
 		die( '-e value of "' . $end . '" could not be parsed by Time::Piece::Guess' );
 	}
@@ -367,7 +367,7 @@ if ( !$remote ) {
 
 	my $toml;
 	if ( defined($config_file) ) {
-		print 'Config File: ' . $config_file;
+		print 'Config File: ' . $config_file . "\n";
 
 		my $err;
 		my $raw_toml = read_file($config_file) || die( 'Failed to read "' . $config_file . '"' );
