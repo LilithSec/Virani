@@ -535,6 +535,9 @@ The return is a hash reference that includes the following keys.
 sub get_pcap_local {
 	my ( $self, %opts ) = @_;
 
+	# start of the request
+	my $req_start = localtime;
+
 	# make sure we have something for type and check to make sure it is sane
 	if ( !defined( $opts{type} ) ) {
 		$opts{type} = $self->{type};
@@ -682,6 +685,9 @@ sub get_pcap_local {
 		regex => $ts_regexp,
 	);
 
+	#
+	my $req_end = localtime;
+
 	# The path to return.
 	my $to_return = {
 		pcaps         => $to_check,
@@ -700,8 +706,13 @@ sub get_pcap_local {
 		padding       => $opts{padding},
 		start_s       => $opts{start}->epoch,
 		start         => $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z'),
-		end_s         => => $opts{end}->epoch,
+		end_s         => $opts{end}->epoch,
 		end           => $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z'),
+		req_start     => $req_start->strftime('%Y-%m-%dT%H:%M:%S%z'),
+		req_start_s   => $req_start->epoch,
+		req_end       => $req_end->strftime('%Y-%m-%dT%H:%M:%S%z'),
+		req_end_s     => $req_end->epoch,
+		req_time      => $req_start->epoch - $req_end->epoch,
 	};
 
 	# used for tracking the files to cleanup
