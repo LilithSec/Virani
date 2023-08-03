@@ -166,8 +166,10 @@ sub new {
 	}
 
 	# real in basic values
-	my @real_in
-		= ( 'apikey', 'default_set', 'cache', 'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only' );
+	my @real_in = (
+		'apikey',           'default_set',       'cache',   'padding',
+		'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only'
+	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
 			$self->{$key} = $opts{$key};
@@ -556,7 +558,7 @@ sub get_pcap_local {
 		die('$opts{start} is not a Time::Piece object');
 	} elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
 		die('$opts{end} is not a Time::Piece object');
-	} elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
+	} elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+$/ ) {
 		die('$opts{padding} is not numeric');
 	}
 	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
