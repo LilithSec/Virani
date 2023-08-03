@@ -1,6 +1,6 @@
 Revision history for Virani
 
-0.2.0  2023-07-31/17:30
+0.2.0  2023-08-03/08:45
         -mojo-virani sets content type to application/x-download
         -misc verbosity fixes/cleanup
         -remove needlessly copying the cache file
