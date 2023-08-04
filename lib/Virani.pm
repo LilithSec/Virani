@@ -106,9 +106,10 @@ Initiates the object.
     - verbose :: Print verbose info.
         Default :: 1
 
-    - type :: Either tcpdump or tshark, which to use for filtering PCAP files in the
+    - type :: Either tcpdump, tshark, or bpf2tshark, which to use for filtering PCAP files in the
               specified time slot. tcpdump is faster, but in general will not nicely handles
-              some VLAN types. For that tshark is needed, but it is signfigantly slower.
+              some VLAN types. For that tshark is needed, but it is signfigantly slower. bpf2tshark
+              is handled via Virani->bpf2tshark and that should be seen for more info on that.
         Default :: tcpdump
 
     - padding :: How many seconds to add to the start and end time stamps to ensure the specified
@@ -179,6 +180,207 @@ sub new {
 
 	return $self;
 } ## end sub new
+
+=head2 bpf2tshark
+
+Does a quick and dumb conversion of a BPF filter to tshark.
+
+=cut
+
+sub bpf2tshark {
+	my $self = $_[0];
+	my $bpf  = $_[1];
+
+	if ( !defined($bpf) ) {
+		return '';
+	}
+
+	# make sure that () have spaces on either side
+	$bpf =~ s/\(/\ \(\ /g;
+	$bpf =~ s/\)/\ \)\ /g;
+
+	my @bpf_split = split( /[\ \t]+/, $bpf );
+	my @tshark_args;
+	my @previous;
+	my $not = 0;
+	foreach my $item (@bpf_split) {
+
+		# sets the equality operator based of if not is true or not
+		my $equality = '==';
+		if ($not) {
+			$equality = '!=';
+		}
+
+		# tcp/udp/icmp
+		if ( $item eq 'tcp' || $item eq 'udp' || $item eq 'icmp' ) {
+			push( @tshark_args, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# handle negation
+		elsif ( $item eq 'not' ) {
+			$not = 1;
+		}
+
+		# handles closing )
+		elsif ( $item eq ')' ) {
+			$not = 0;
+			push( @tshark_args, ')' );
+			@previous = ();
+		}
+
+		# handles opening (
+		elsif ( $item eq ')' ) {
+			if ($not) {
+				push( @tshark_args, '!(' );
+			} else {
+				push( @tshark_args, '(' );
+			}
+			$not      = 0;
+			@previous = ();
+		}
+
+		# and/or
+		elsif ( $item eq 'or' || $item eq 'and' ) {
+			# make sure we not add it twice
+			if ( $tshark_args[$#tshark_args] ne 'and' && $tshark_args[$#tshark_args] ne 'or' ) {
+				push( @tshark_args, $item );
+			}
+			$not      = 0;
+			@previous = ();
+		}
+
+		# start of src/dst
+		elsif ( !defined( $previous[0] ) && ( $item eq 'src' || $item eq 'dst' ) ) {
+			push( @previous, $item );
+		}
+
+		# start of ether
+		elsif ( !defined( $previous[0] ) && $item eq 'ether' ) {
+			push( @previous, $item );
+		}
+
+		# adding src/dst/host to ether
+		elsif (defined( $previous[0] )
+			&& $previous[0] eq 'ether'
+			&& ( $item eq 'src' || $item eq 'dst' || $item eq 'host' ) )
+		{
+			push( @previous, $item );
+		}
+
+		# generic host/port
+		elsif ( !defined( $previous[0] ) && ( $item eq 'port' || $item eq 'host' ) ) {
+			push( @previous, $item );
+		}
+
+		# adding host/port to src/dst
+		elsif (defined( $previous[0] )
+			&& ( $previous[0] eq 'src' || $previous[0] eq 'dst' )
+			&& ( $item eq 'host' || $item eq 'port' ) )
+		{
+			push( @previous, $item );
+		}
+
+		# add ether src $ether
+		elsif (defined( $previous[0] )
+			&& defined( $previous[1] )
+			&& $previous[0] eq 'ether'
+			&& $previous[1] eq 'src' )
+		{
+			push( @tshark_args, 'etc.src', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add ether src $ether
+		elsif (defined( $previous[0] )
+			&& defined( $previous[1] )
+			&& $previous[0] eq 'ether'
+			&& $previous[1] eq 'dst' )
+		{
+			push( @tshark_args, 'etc.dst', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add ether host $ether
+		elsif (defined( $previous[0] )
+			&& defined( $previous[1] )
+			&& $previous[0] eq 'ether'
+			&& $previous[1] eq 'host' )
+		{
+			push( @tshark_args, 'etc.addr', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add src port $port
+		elsif (defined( $previous[0] )
+			&& defined( $previous[1] )
+			&& $previous[0] eq 'src'
+			&& $previous[1] eq 'port' )
+		{
+			push( @tshark_args, '(', 'tcp.srcport', $equality, $item, 'or', 'udp.srcport', $equality, $item, ')' );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add dst port $port
+		elsif (defined( $previous[0] )
+			&& defined( $previous[1] )
+			&& $previous[0] eq 'dst'
+			&& $previous[1] eq 'port' )
+		{
+			push( @tshark_args, '(', 'tcp.dstport', $equality, $item, 'or', 'udp.dstport', $equality, $item, ')' );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add src host $host
+		elsif (defined( $previous[0] )
+			&& defined( $previous[1] )
+			&& $previous[0] eq 'src'
+			&& $previous[1] eq 'port' )
+		{
+			push( @tshark_args, 'ip.src', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add dst host $host
+		elsif (defined( $previous[0] )
+			&& defined( $previous[1] )
+			&& $previous[0] eq 'dst'
+			&& $previous[1] eq 'port' )
+		{
+			push( @tshark_args, 'ip.dst', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add port $port
+		elsif ( defined( $previous[0] ) && !defined( $previous[1] ) && $previous[0] eq 'port' ) {
+			push( @tshark_args, '(', 'tcp.port', $equality, $item, 'or', 'udp.port', $equality, $item, ')' );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add host $host
+		elsif ( defined( $previous[0] ) && !defined( $previous[1] ) && $previous[0] eq 'port' ) {
+			push( @tshark_args, 'ip.addr', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# if anything else is found, skip it
+		else {
+			$not      = 0;
+			@previous = ();
+		}
+	} ## end foreach my $item (@bpf_split)
+
+} ## end sub bpf2tshark
 
 =head2 filter_clean
 
