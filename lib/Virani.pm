@@ -516,7 +516,7 @@ sub check_type {
 		return 0;
 	}
 
-	if ( $type ne 'tshark' && $type ne 'tcpdump' ) {
+	if ( $type ne 'tshark' && $type ne 'tcpdump' && $type ne 'bpf2tshark' ) {
 		return 0;
 	}
 
