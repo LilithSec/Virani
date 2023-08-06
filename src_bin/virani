@@ -202,7 +202,7 @@ my $config_virani = '/usr/local/etc/virani.toml';
 my $tmpdir;
 my $no_cache             = 0;
 my $quiet                = 0, my $verbose = 1;
-my $type                 = 'tcpdump';
+my $type;
 my $verify_hostname      = 1;
 my $verify_hostname_flag = 0;
 my $timeout;

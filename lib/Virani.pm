@@ -928,6 +928,13 @@ sub get_pcap_local {
 	# used for tracking the files to cleanup
 	my @tmp_files;
 
+	# puts together the tshark filter if needed
+	my $tshark_filter = $opts{filter};
+	if ( $opts{type} eq 'bpf2tshark' ) {
+		$tshark_filter = $self->bpf2tshark( $opts{filter} );
+		$to_return->{filter_translated} = $tshark_filter;
+	}
+
 	# the merge command
 	my $to_merge = [ 'mergecap', '-w', $cache_file ];
 	foreach my $pcap ( @{$to_check} ) {
@@ -949,7 +956,7 @@ sub get_pcap_local {
 			);
 		} else {
 			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $opts{filter} ],
+				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $tshark_filter ],
 				verbose => 0
 			);
 		}
