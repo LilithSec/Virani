@@ -380,6 +380,7 @@ sub bpf2tshark {
 		}
 	} ## end foreach my $item (@bpf_split)
 
+	return join(' ', @tshark_args);
 } ## end sub bpf2tshark
 
 =head2 filter_clean
