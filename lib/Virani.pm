@@ -923,8 +923,7 @@ sub get_pcap_local {
 	# set the padding
 	my $start = $opts{start} - $opts{padding};
 	my $end   = $opts{end} + $opts{padding};
-	$self->verbose( 'info',
-		'Padded Start: ' . $start->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $start->epoch );
+	$self->verbose( 'info', 'Padded Start: ' . $start->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $start->epoch );
 	$self->verbose( 'info', 'Padded End: ' . $end->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $end->epoch );
 
 	# get the set
@@ -984,6 +983,7 @@ sub get_pcap_local {
 	if ( $opts{type} eq 'bpf2tshark' ) {
 		$tshark_filter = $self->bpf2tshark( $opts{filter} );
 		$to_return->{filter_translated} = $tshark_filter;
+		$self->verbose( 'info', 'Translated Filter ' . $tshark_filter );
 	}
 
 	# the merge command
