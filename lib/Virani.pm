@@ -904,8 +904,8 @@ sub get_pcap_local {
 	my $start = $opts{start} - $opts{padding};
 	my $end   = $opts{end} + $opts{padding};
 	$self->verbose( 'info',
-		'Padded Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
-	$self->verbose( 'info', 'Padded End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{end}->epoch );
+		'Padded Start: ' . $start->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $start->epoch );
+	$self->verbose( 'info', 'Padded End: ' . $end->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $end->epoch );
 
 	# get the set
 	my $set_path = $self->get_set_path( $opts{set} );
