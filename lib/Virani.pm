@@ -22,11 +22,11 @@ Virani - PCAP retrieval for a FPC setup writing to PCAP files.
 
 =head1 VERSION
 
-Version 0.3.0
+Version 1.0.0
 
 =cut
 
-our $VERSION = '0.3.0';
+our $VERSION = '1.0.0';
 
 =head1 SYNOPSIS
 
@@ -184,6 +184,35 @@ sub new {
 =head2 bpf2tshark
 
 Does a quick and dumb conversion of a BPF filter to tshark.
+
+    my $tshark=$virani->bpf2tshark($bpf);
+
+
+
+    ()  ->  ()
+    not ()  ->  !()
+
+    icmp -> icmp
+    tcp -> tcp
+    udp -> udp
+
+    port $port -> ( tcp.port == $port or udp.port == $port )
+    not port $port -> ( tcp.port != $port or udp.port != $port )
+
+    dst port $port -> ( tcp.dstport == $port or udp.dstport == $port )
+    not dst port $port -> ( tcp.dstport != $port or udp.dstport != $port )
+
+    src port $port -> ( tcp.srcport == $port or udp.srcport == $port )
+    not src port $port -> ( tcp.srcport != $port or udp.srcport != $port )
+
+    host $host -> ip.addr == $host
+    not host $host -> ip.addr != $host
+
+    dst host $host -> ip.dst == $host
+    not dst host $host -> ip.dst != $host
+
+    src host $host -> ip.src == $host
+    not src host $host -> ip.src != $host
 
 =cut
 

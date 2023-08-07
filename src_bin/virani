@@ -77,9 +77,9 @@ read in and used the filter.
 
 =head2 -t <type>
 
-tcpdump or tshark
+tcpdump, tshark, or bpf2tshark
 
-Default :: tcpdump
+If not specified will default to what ever the default is for that set.
 
 =head2 --set <set>
 
