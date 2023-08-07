@@ -215,6 +215,12 @@ Does a quick and dumb conversion of a BPF filter to tshark.
     src host $host -> ip.src == $host
     not src host $host -> ip.src != $host
 
+    dst $host -> ip.dst == $host
+    not host $host -> ip.dst != $host
+
+    src src $host -> ip.src == $host
+    not src $host -> ip.src != $host
+
 =cut
 
 sub bpf2tshark {
@@ -371,7 +377,7 @@ sub bpf2tshark {
 		elsif (defined( $previous[0] )
 			&& defined( $previous[1] )
 			&& $previous[0] eq 'src'
-			&& $previous[1] eq 'port' )
+			&& $previous[1] eq 'host' )
 		{
 			push( @tshark_args, 'ip.src', $equality, $item );
 			$not      = 0;
@@ -382,7 +388,7 @@ sub bpf2tshark {
 		elsif (defined( $previous[0] )
 			&& defined( $previous[1] )
 			&& $previous[0] eq 'dst'
-			&& $previous[1] eq 'port' )
+			&& $previous[1] eq 'host' )
 		{
 			push( @tshark_args, 'ip.dst', $equality, $item );
 			$not      = 0;
@@ -397,8 +403,22 @@ sub bpf2tshark {
 		}
 
 		# add host $host
-		elsif ( defined( $previous[0] ) && !defined( $previous[1] ) && $previous[0] eq 'port' ) {
+		elsif ( defined( $previous[0] ) && !defined( $previous[1] ) && $previous[0] eq 'host' ) {
 			push( @tshark_args, 'ip.addr', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add src $host
+		elsif ( defined( $previous[0] ) && !defined( $previous[1] ) && $previous[0] eq 'src' ) {
+			push( @tshark_args, 'ip.src', $equality, $item );
+			$not      = 0;
+			@previous = ();
+		}
+
+		# add dst $host
+		elsif ( defined( $previous[0] ) && !defined( $previous[1] ) && $previous[0] eq 'dst' ) {
+			push( @tshark_args, 'ip.dst', $equality, $item );
 			$not      = 0;
 			@previous = ();
 		}
