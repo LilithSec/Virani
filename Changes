@@ -1,8 +1,10 @@
 Revision history for Virani
 
-1.0.0  2023-08-07/09:00
-       -remote uses default set now if now is specified. This does cause isues with older versions though and remote fetching.
-       -add bpf2tshark
+1.0.1  2023-08-07/11:30
+       -bpf translate fix for src/dst with out host
+       -properly reads type from config
+       -log/display padded time
+       -display/log BPF translation
 
 0.3.0  2023-08-03/15:45
         -add req_start, req_start_s, req_end, req_end_s, and req_time keys to metadata
