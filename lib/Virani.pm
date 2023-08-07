@@ -170,7 +170,8 @@ sub new {
 	# real in basic values
 	my @real_in = (
 		'apikey',           'default_set',       'cache',   'padding',
-		'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only'
+		'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only',
+		'type'
 	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
@@ -409,7 +410,7 @@ sub bpf2tshark {
 		}
 	} ## end foreach my $item (@bpf_split)
 
-	return join(' ', @tshark_args);
+	return join( ' ', @tshark_args );
 } ## end sub bpf2tshark
 
 =head2 filter_clean
