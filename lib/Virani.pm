@@ -103,6 +103,12 @@ Initiates the object.
     - verbose_to_syslog :: Send verbose items to syslog. This is used by mojo-virani.
         Default :: 0
 
+    - pcap_glob :: The glob to use for matching files.
+        Default :: *.pcap
+
+    - ts_is_unixtime :: The timestamp is unixtime and does not requires additional processing.
+        Default :: 1
+
     - verbose :: Print verbose info.
         Default :: 1
 
@@ -129,6 +135,8 @@ For sets, the following keys are usable, of which only path is required.
 
     - type :: The default filter type to use with this set.
 
+    - ts_is_unixtime :: The timestamp is unixtime and does not requires additional processing.
+
 =cut
 
 sub new {
@@ -146,6 +154,8 @@ sub new {
 		verbose           => 1,
 		type              => 'tcpdump',
 		padding           => 5,
+		ts_is_unixtime    => 1,
+		pcap_glob         => '*.pcap*',
 		sets              => {
 			default => {
 				path => '/var/log/daemonlogger',
@@ -171,7 +181,7 @@ sub new {
 	my @real_in = (
 		'apikey',           'default_set',       'cache',   'padding',
 		'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only',
-		'type'
+		'type',             'ts_is_unixtime',    'pcap_glob'
 	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
@@ -804,12 +814,34 @@ sub get_pcap_local {
 	# start of the request
 	my $req_start = localtime;
 
+	# if set is undef or blank, use the default
+	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
+		$opts{set} = $self->get_default_set;
+	}
+	$self->verbose( 'info', 'Set: ' . $opts{set} );
+
 	# make sure we have something for type and check to make sure it is sane
 	if ( !defined( $opts{type} ) ) {
 		$opts{type} = $self->{type};
 		if ( defined( $self->{sets}{ $opts{set} }{type} ) ) {
 			$opts{type} = $self->{sets}{ $opts{set} }{type};
 		}
+	}
+
+	# figure out what to use for $ts_is_unixtime
+	my $ts_is_unixtime;
+	if (defined( $self->{sets}{ $opts{set} }{ts_is_unixtime})) {
+		$ts_is_unixtime=$self->{sets}{ $opts{set} }{ts_is_unixtime};
+	}else {
+		$ts_is_unixtime=$self->{ts_is_unixtime};
+	}
+
+	# figure out what to use for $pcap_glob
+	my $pcap_glob;
+	if (defined( $self->{sets}{ $opts{set} }{ts_is_unixtime})) {
+		$pcap_glob=$self->{sets}{ $opts{set} }{$pcap_glob};
+	}else {
+		$pcap_glob=$self->{pcap_glob};
 	}
 
 	# check it here incase the config includes something off
@@ -842,11 +874,6 @@ sub get_pcap_local {
 		$opts{no_cache} = 0;
 	}
 	$self->verbose( 'info', 'no_cache: ' . $opts{no_cache} );
-
-	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
-		$opts{set} = $self->get_default_set;
-	}
-	$self->verbose( 'info', 'Set: ' . $opts{set} );
 
 	# make sure the set exists
 	if ( !defined( $self->{sets}->{ $opts{set} } ) ) {
