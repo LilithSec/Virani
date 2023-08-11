@@ -942,6 +942,7 @@ sub get_pcap_local {
 	} else {
 		$ts_regexp = $self->{default_regex};
 	}
+	$self->verbose( 'info', 'Timestamp Regexp: ' . $ts_regexp );
 
 	my $to_check = File::Find::IncludesTimeRange->find(
 		items => \@pcaps,
