@@ -839,7 +839,7 @@ sub get_pcap_local {
 	# figure out what to use for $pcap_glob
 	my $pcap_glob;
 	if ( defined( $self->{sets}{ $opts{set} }{pcap_glob} ) ) {
-		$pcap_glob = $self->{sets}{ $opts{set} }{$pcap_glob};
+		$pcap_glob = $self->{sets}{ $opts{set} }{pcap_glob};
 	} else {
 		$pcap_glob = $self->{pcap_glob};
 	}
