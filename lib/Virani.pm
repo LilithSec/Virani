@@ -843,6 +843,7 @@ sub get_pcap_local {
 	} else {
 		$pcap_glob = $self->{pcap_glob};
 	}
+	$self->verbose( 'info', 'PCAP Glob: ' . $pcap_glob );
 
 	# check it here incase the config includes something off
 	if ( !$self->check_type( $opts{type} ) ) {
@@ -914,7 +915,6 @@ sub get_pcap_local {
 		&& !$opts{no_cache}
 		&& -f $cache_file
 		&& -f $cache_file . '.json'
-
 		)
 	{
 		$return_cache = 1;
