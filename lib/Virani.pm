@@ -181,7 +181,7 @@ sub new {
 	my @real_in = (
 		'apikey',           'default_set',       'cache',   'padding',
 		'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only',
-		'type',             'ts_is_unixtime',    'pcap_glob'
+		'type',             'ts_is_unixtime',    'pcap_glob', 'default_regex'
 	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
