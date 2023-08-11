@@ -830,18 +830,18 @@ sub get_pcap_local {
 
 	# figure out what to use for $ts_is_unixtime
 	my $ts_is_unixtime;
-	if (defined( $self->{sets}{ $opts{set} }{ts_is_unixtime})) {
-		$ts_is_unixtime=$self->{sets}{ $opts{set} }{ts_is_unixtime};
-	}else {
-		$ts_is_unixtime=$self->{ts_is_unixtime};
+	if ( defined( $self->{sets}{ $opts{set} }{ts_is_unixtime} ) ) {
+		$ts_is_unixtime = $self->{sets}{ $opts{set} }{ts_is_unixtime};
+	} else {
+		$ts_is_unixtime = $self->{ts_is_unixtime};
 	}
 
 	# figure out what to use for $pcap_glob
 	my $pcap_glob;
-	if (defined( $self->{sets}{ $opts{set} }{ts_is_unixtime})) {
-		$pcap_glob=$self->{sets}{ $opts{set} }{$pcap_glob};
-	}else {
-		$pcap_glob=$self->{pcap_glob};
+	if ( defined( $self->{sets}{ $opts{set} }{ts_is_unixtime} ) ) {
+		$pcap_glob = $self->{sets}{ $opts{set} }{$pcap_glob};
+	} else {
+		$pcap_glob = $self->{pcap_glob};
 	}
 
 	# check it here incase the config includes something off
@@ -960,7 +960,7 @@ sub get_pcap_local {
 	}
 
 	# get the pcaps
-	my @pcaps = File::Find::Rule->file()->name("*.pcap*")->in($set_path);
+	my @pcaps = File::Find::Rule->file()->name($pcap_glob)->in($set_path);
 
 	# get the ts_regexp to use
 	my $ts_regexp;
@@ -972,10 +972,11 @@ sub get_pcap_local {
 	$self->verbose( 'info', 'Timestamp Regexp: ' . $ts_regexp );
 
 	my $to_check = File::Find::IncludesTimeRange->find(
-		items => \@pcaps,
-		start => $start,
-		end   => $end,
-		regex => $ts_regexp,
+		items          => \@pcaps,
+		start          => $start,
+		end            => $end,
+		regex          => $ts_regexp,
+		ts_is_unixtime => $ts_is_unixtime,
 	);
 
 	# The return hash and what will be used for the cache JSON
