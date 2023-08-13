@@ -22,11 +22,11 @@ Virani - PCAP retrieval for a FPC setup writing to PCAP files.
 
 =head1 VERSION
 
-Version 1.0.1
+Version 1.1.0
 
 =cut
 
-our $VERSION = '1.0.1';
+our $VERSION = '1.1.0';
 
 =head1 SYNOPSIS
 
@@ -104,7 +104,7 @@ Initiates the object.
         Default :: 0
 
     - pcap_glob :: The glob to use for matching files.
-        Default :: *.pcap
+        Default :: *.pcap*
 
     - ts_is_unixtime :: The timestamp is unixtime and does not requires additional processing.
         Default :: 1
@@ -179,8 +179,8 @@ sub new {
 
 	# real in basic values
 	my @real_in = (
-		'apikey',           'default_set',       'cache',   'padding',
-		'default_max_time', 'verbose_to_syslog', 'verbose', 'auth_by_IP_only',
+		'apikey',           'default_set',       'cache',     'padding',
+		'default_max_time', 'verbose_to_syslog', 'verbose',   'auth_by_IP_only',
 		'type',             'ts_is_unixtime',    'pcap_glob', 'default_regex'
 	);
 	for my $key (@real_in) {
@@ -763,6 +763,10 @@ The return is a hash reference that includes the following keys.
 
     - pcap_count :: A count of used PCAPs.
 
+    - pcap_glob :: The value of pcap_glob used.
+
+    - ts_is_unixtime :: The value of ts_is_unixtime used.
+
     - failed :: A hash of PCAPs that failed. PCAP path as key and value being the reason.
 
     - failed_count :: A count of failed PCAPs.
@@ -909,13 +913,11 @@ sub get_pcap_local {
 
 	# if applicable return the cache file
 	my $return_cache = 0;
-	if (
-		   defined( $opts{file} )
+	if (   defined( $opts{file} )
 		&& $opts{file} ne $cache_file
 		&& !$opts{no_cache}
 		&& -f $cache_file
-		&& -f $cache_file . '.json'
-		)
+		&& -f $cache_file . '.json' )
 	{
 		$return_cache = 1;
 	} elsif ( !defined( $opts{file} ) && !$opts{no_cache} && -f $cache_file && -f $cache_file . '.json' ) {
@@ -982,26 +984,28 @@ sub get_pcap_local {
 	# The return hash and what will be used for the cache JSON
 	# req_end stuff set later
 	my $to_return = {
-		pcaps         => $to_check,
-		pcap_count    => 0,
-		failed        => {},
-		failed_count  => 0,
-		success_count => 0,
-		path          => $cache_file,
-		filter        => $opts{filter},
-		total_size    => 0,
-		failed_size   => 0,
-		success_size  => 0,
-		tmp_size      => 0,
-		final_size    => 0,
-		type          => $opts{type},
-		padding       => $opts{padding},
-		start_s       => $opts{start}->epoch,
-		start         => $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z'),
-		end_s         => $opts{end}->epoch,
-		end           => $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z'),
-		req_start     => $req_start->strftime('%Y-%m-%dT%H:%M:%S%z'),
-		req_start_s   => $req_start->epoch,
+		pcaps          => $to_check,
+		pcap_glob      => $pcap_glob,
+		pcap_count     => 0,
+		failed         => {},
+		failed_count   => 0,
+		success_count  => 0,
+		path           => $cache_file,
+		filter         => $opts{filter},
+		total_size     => 0,
+		failed_size    => 0,
+		success_size   => 0,
+		tmp_size       => 0,
+		final_size     => 0,
+		type           => $opts{type},
+		padding        => $opts{padding},
+		start_s        => $opts{start}->epoch,
+		start          => $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z'),
+		end_s          => $opts{end}->epoch,
+		end            => $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z'),
+		req_start      => $req_start->strftime('%Y-%m-%dT%H:%M:%S%z'),
+		req_start_s    => $req_start->epoch,
+		ts_is_unixtime => $ts_is_unixtime,
 	};
 
 	# used for tracking the files to cleanup
@@ -1257,11 +1261,17 @@ With daemonlogger setup along the lines of like below...
 The following can be made available via mojo-varini or locally via varini with the set name of
 default as below.
 
-    default_set='default'
     allowed_subnets=["192.168.14.0/23", "127.0.0.1/8"]
     [sets.default]
     path='/var/log/daemonlogger'
-    regex='(?<timestamp>\d\d\d\d\d\d+)(\.pcap|(?<subsec>\.\d+)\.pcap)$'
+
+If you want to use 'init/freebsd' to start mojo-virani, you just need to copy it
+it to '/usr/local/etc/rc.d/virani' and add the following or the like to '/etc/rc.conf'.
+
+    virani_enable="YES"
+    virani_flags="daemon -m production -l http://127.0.0.1:8080 -l http://192.168.14.1:8080"
+
+See the script for information on the various possible config args for it.
 
 =head1 AUTHOR
 
