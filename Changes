@@ -27,6 +27,9 @@ Revision history for Virani
          virani --cached <id>
        - the metadata JSON now includes the set it was generated from as the
          key set and the cache ID for fetching it as the key cache_id
+       - list_cached and get_cached narrate what they are doing via verbose
+         like get_pcap_local does, including warning on unreadable metadata
+         JSONs
        - SECURITY: fix default allowed_subnets entry of '192.168.0.0/', which
          parsed as a /0 and matched any IP, to '192.168.0.0/16'
        - bpf2tshark: fix handling of '(', which was never matched, fix ether

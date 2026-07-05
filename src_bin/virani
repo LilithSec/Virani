@@ -408,20 +408,27 @@ if ( !$remote ) {
 	} ## end if ($list_sets)
 
 	if ($list_cached) {
+		# narration would corrupt the JSON being printed to stdout
+		$virani->set_verbose(0);
 		my $json = JSON->new->allow_nonref->pretty->canonical(1);
 		print $json->encode( $virani->list_cached( set => $set ) );
 		exit 0;
 	}
 
 	if ( defined($cached_id) ) {
-		if ( !$meta_only ) {
+		if ($meta_only) {
+			# narration would corrupt the JSON being printed to stdout
+			$virani->set_verbose(0);
+		} else {
 			my $pcap_path = $virani->get_cached( id => $cached_id );
 			cp( $pcap_path, $write ) || die( 'Failed to copy "' . $pcap_path . '" to "' . $write . '"... ' . $! );
 			print 'Written to ' . $write . "\n" . "Metadata...\n";
+			# so the metadata JSON printed below is not interrupted
+			$virani->set_verbose(0);
 		}
 		print read_file( $virani->get_cached( id => $cached_id, what => 'json' ) );
 		exit 0;
-	}
+	} ## end if ( defined($cached_id) )
 
 	my $returned = $virani->get_pcap_local(
 		start    => $start_obj,

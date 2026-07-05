@@ -689,6 +689,13 @@ sub list_cached {
 		die( 'Cache dir,"' . $self->{cache} . '", does not exist or is not a dir' );
 	}
 
+	if ( defined( $opts{set} ) ) {
+		$self->verbose( 'info',
+			'Listing cached searches in "' . $self->{cache} . '", set limited to "' . $opts{set} . '"' );
+	} else {
+		$self->verbose( 'info', 'Listing cached searches in "' . $self->{cache} . '"' );
+	}
+
 	opendir( my $cache_dh, $self->{cache} )
 		or die( 'Failed to opendir the cache dir,"' . $self->{cache} . '"... ' . $! );
 
@@ -724,7 +731,18 @@ sub list_cached {
 				$item->{filter}     = $meta->{filter};
 				$item->{final_size} = $meta->{final_size};
 				$item->{req_time}   = $meta->{req_time};
+			} else {
+				$self->verbose( 'warning', 'Failed to read or parse the metadata JSON "' . $json_path . '"' );
 			}
+
+			$self->verbose( 'info',
+					  'Found cached search... id="'
+					. $item->{id}
+					. '" has_pcap='
+					. $item->{has_pcap}
+					. ' filter="'
+					. ( $item->{filter} // '' )
+					. '"' );
 
 			push( @cached, $item );
 		} ## end if ( $id =~ $cache_id_regex )
@@ -732,6 +750,8 @@ sub list_cached {
 	closedir($cache_dh);
 
 	@cached = sort { $a->{start_s} <=> $b->{start_s} } @cached;
+
+	$self->verbose( 'info', 'Cached searches found: ' . scalar(@cached) );
 
 	return \@cached;
 } ## end sub list_cached
@@ -775,6 +795,8 @@ sub get_cached {
 		die( '$opts{what}, "' . $opts{what} . '", is not either "pcap" or "json"' );
 	}
 
+	$self->verbose( 'info', 'Fetching the cached ' . $opts{what} . ' for the cache ID "' . $opts{id} . '"' );
+
 	my $path = $self->{cache} . '/' . $opts{id};
 	if ( $opts{what} eq 'json' ) {
 		$path = $path . '.json';
@@ -783,6 +805,8 @@ sub get_cached {
 	if ( !-f $path ) {
 		die( 'No cached ' . $opts{what} . ' found for the cache ID "' . $opts{id} . '"' );
 	}
+
+	$self->verbose( 'info', 'Cached ' . $opts{what} . ' for the cache ID "' . $opts{id} . '": ' . $path );
 
 	return $path;
 } ## end sub get_cached
