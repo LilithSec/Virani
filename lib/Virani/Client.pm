@@ -255,6 +255,129 @@ sub get_sets {
 	return $res->decoded_content;
 }
 
+=head2 list_cached
+
+Fetches the list of cached searches.
+
+One option is taken, 'set', which if defined limits the returned items
+to those generated from that set.
+
+Returns the raw unparsed JSON, a array of hashes. For the keys of the
+hashes, see the docs for Virani->list_cached.
+
+    my $raw_cached_json=$virani_client->list_cached;
+
+=cut
+
+sub list_cached {
+	my ( $self, %opts ) = @_;
+
+	my $ua = LWP::UserAgent->new(
+		protocols_allowed => [ 'http', 'https' ],
+		timeout           => $self->{timeout},
+	);
+	if ( $self->{verify_hostname} ) {
+		$ua->ssl_opts( verify_hostname => 1 );
+	}
+	else {
+		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
+	}
+
+	my $url = $self->{url} . '?list_cached=1';
+	if ( defined( $opts{set} ) ) {
+		$url = $url . '&set=' . $opts{set};
+	}
+	if ( defined( $self->{apikey} ) ) {
+		$url = $url . '&apikey=' . $self->{apikey};
+	}
+
+	my $res;
+	eval { $res = $ua->request( GET $url); };
+	if ($@) {
+		die( 'Fetch failed... ' . $@ );
+	}
+	if ( !$res->is_success ) {
+		die( 'Fetch failed... ' . $url . ' ... ' . $res->status_line . ' ... ' . $res->decoded_content );
+	}
+
+	return $res->decoded_content;
+}
+
+=head2 fetch_cached
+
+Fetches a cached search, both the PCAP and the metadata JSON.
+
+    - id :: The cache ID to fetch, as found via list_cached. Required.
+
+    - file :: The file to write the PCAP to.
+        - Default :: out.pcap
+
+    - meta_only :: Only fetch the metadata JSON, skipping fetching the PCAP.
+        - Default :: 0
+
+The raw unparsed JSON of the metadata is returned.
+
+    my $raw_metadata_json=$virani_client->fetch_cached(id=>$id, file=>'out.pcap');
+
+=cut
+
+sub fetch_cached {
+	my ( $self, %opts ) = @_;
+
+	if ( !defined( $opts{id} ) ) {
+		die('$opts{id} not defined');
+	}
+
+	if ( !defined( $opts{file} ) ) {
+		$opts{file} = 'out.pcap';
+	}
+
+	my $ua = LWP::UserAgent->new(
+		protocols_allowed => [ 'http', 'https' ],
+		timeout           => $self->{timeout},
+	);
+	if ( $self->{verify_hostname} ) {
+		$ua->ssl_opts( verify_hostname => 1 );
+	}
+	else {
+		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
+	}
+
+	my $url = $self->{url} . '?cached=' . $opts{id};
+	if ( defined( $self->{apikey} ) ) {
+		$url = $url . '&apikey=' . $self->{apikey};
+	}
+
+	# get the PCAP
+	if ( !$opts{meta_only} ) {
+		my $res;
+		eval { $res = $ua->request( GET $url); };
+		if ($@) {
+			die( 'Fetch failed... ' . $@ );
+		}
+		if ( $res->is_success ) {
+			my $pcap = $res->decoded_content;
+			write_file( $opts{file}, $pcap ) || die( 'PCAP write to "' . $opts{file} . '" failed... ' . $@ );
+		}
+		else {
+			die( 'Fetch failed... ' . $url . ' ... ' . $res->status_line . ' ... ' . $res->decoded_content );
+		}
+	}
+
+	# get the meta
+	$url = $url . '&get_meta=1';
+	my $res;
+	eval { $res = $ua->request( GET $url); };
+	if ($@) {
+		die( 'Fetch failed... ' . $@ );
+	}
+	if ( !$res->is_success ) {
+		die( 'Fetch failed... ' . $url . ' ... ' . $res->status_line . ' ... ' . $res->decoded_content );
+	}
+
+	return $res->decoded_content;
+}
+
 =head1 AUTHOR
 
 Zane C. Bowers-Hadley, C<< <vvelox at vvelox.net> >>

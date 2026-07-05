@@ -29,6 +29,12 @@ Version 1.2.0
 
 our $VERSION = '1.2.0';
 
+# What a cache file basename must match to be usable via list_cached/get_cached.
+# Also the security check for IDs passed to get_cached, so anything matching
+# this must be safe to use as part of a path after being handed a remote user.
+our $cache_id_regex
+	= qr/\A(?<set>[^\/\\]+)\-(?<type>tcpdump|tshark|bpf2tshark)\-(?<start>\d+)\-(?<end>\d+)\-(?<md5>[a-f0-9]{32})\z/;
+
 =head1 SYNOPSIS
 
     use Virani;
@@ -632,6 +638,155 @@ sub get_sets {
 	return $sets;
 } ## end sub get_sets
 
+=head2 list_cached
+
+Lists the cached searches.
+
+One option is taken, 'set', which if defined limits the returned items
+to those generated from that set.
+
+The return is a array ref of hash refs, sorted by start time. Each hash
+ref has the following keys.
+
+    - id :: The cache ID for it, usable with get_cached.
+
+    - set :: The set it was generated from.
+
+    - type :: The filter type used.
+
+    - start_s :: Start time in seconds since epoch, not including padding.
+
+    - end_s :: End time in seconds since epoch, not including padding.
+
+    - has_pcap :: 0/1 for if the PCAP exists. 0 means generation failed.
+
+    - generated_s :: When it was generated, in seconds since epoch.
+
+    - filter :: The filter used. From the metadata JSON.
+
+    - final_size :: The size of the resulting PCAP. From the metadata JSON.
+
+    - req_time :: How long generating took in seconds. From the metadata JSON.
+
+Searches ran with no_cache or that wrote directly to a output file, due to the
+cache dir not being usable, will not show up in this, given they are not in
+the cache.
+
+If the metadata JSON for a item is unreadable, the keys sourced from it will
+be undef.
+
+    my $cached=$virani->list_cached;
+    foreach my $item ( @{ $cached } ){
+        print $item->{id}."\n";
+    }
+
+=cut
+
+sub list_cached {
+	my ( $self, %opts ) = @_;
+
+	if ( !-d $self->{cache} ) {
+		die( 'Cache dir,"' . $self->{cache} . '", does not exist or is not a dir' );
+	}
+
+	opendir( my $cache_dh, $self->{cache} )
+		or die( 'Failed to opendir the cache dir,"' . $self->{cache} . '"... ' . $! );
+
+	my @cached;
+	while ( my $entry = readdir($cache_dh) ) {
+		if ( $entry !~ /\.json\z/ ) {
+			next;
+		}
+		my $id = $entry;
+		$id =~ s/\.json\z//;
+		if ( $id =~ $cache_id_regex ) {
+			my $item = {
+				id      => $id,
+				set     => $+{set},
+				type    => $+{type},
+				start_s => $+{start},
+				end_s   => $+{end},
+			};
+			if ( defined( $opts{set} ) && $opts{set} ne $item->{set} ) {
+				next;
+			}
+
+			my $json_path = $self->{cache} . '/' . $entry;
+			$item->{generated_s} = ( stat($json_path) )[9];
+			$item->{has_pcap}    = ( -f $self->{cache} . '/' . $id ) ? 1 : 0;
+
+			# grab the interesting bits from the metadata JSON... a failure
+			# just means those keys end up undef, such as if it was removed
+			# between the readdir and now
+			my $meta;
+			eval { $meta = decode_json( read_file($json_path) ); };
+			if ( !$@ && ref($meta) eq 'HASH' ) {
+				$item->{filter}     = $meta->{filter};
+				$item->{final_size} = $meta->{final_size};
+				$item->{req_time}   = $meta->{req_time};
+			}
+
+			push( @cached, $item );
+		} ## end if ( $id =~ $cache_id_regex )
+	} ## end while ( my $entry = readdir($cache_dh) )
+	closedir($cache_dh);
+
+	@cached = sort { $a->{start_s} <=> $b->{start_s} } @cached;
+
+	return \@cached;
+} ## end sub list_cached
+
+=head2 get_cached
+
+Returns the path to a file for a cached search.
+
+    - id :: The cache ID, as returned by list_cached or the cache_id metadata
+            key. Required.
+
+    - what :: Either 'pcap' or 'json', for the PCAP or the metadata JSON.
+        - Default :: pcap
+
+Will die if the ID is not a valid cache ID, if what is not 'pcap' or 'json',
+or if the file in question does not exist. For failed searches the metadata
+JSON will exist, but the PCAP will not.
+
+    my $pcap_path=$virani->get_cached( id=>$id );
+    my $json_path=$virani->get_cached( id=>$id, what=>'json' );
+
+=cut
+
+sub get_cached {
+	my ( $self, %opts ) = @_;
+
+	if ( !defined( $opts{id} ) ) {
+		die('$opts{id} not defined');
+	}
+
+	# make sure the ID is sane before using it as part of a path, as it
+	# may be from a remote user
+	if ( $opts{id} !~ $cache_id_regex ) {
+		die( '"' . $opts{id} . '" is not a valid cache ID' );
+	}
+
+	if ( !defined( $opts{what} ) ) {
+		$opts{what} = 'pcap';
+	}
+	if ( $opts{what} ne 'pcap' && $opts{what} ne 'json' ) {
+		die( '$opts{what}, "' . $opts{what} . '", is not either "pcap" or "json"' );
+	}
+
+	my $path = $self->{cache} . '/' . $opts{id};
+	if ( $opts{what} eq 'json' ) {
+		$path = $path . '.json';
+	}
+
+	if ( !-f $path ) {
+		die( 'No cached ' . $opts{what} . ' found for the cache ID "' . $opts{id} . '"' );
+	}
+
+	return $path;
+} ## end sub get_cached
+
 # Internal helper that resolves and sanity checks the common options taken by
 # get_cache_file and get_pcap_local. Takes a hash ref of the options and fills
 # in set, type, padding, filter, auto_no_cache, and no_cache. Dies on anything
@@ -977,6 +1132,12 @@ The return is a hash reference that includes the following keys.
     - merge_error :: The error message from mergecap if merging failed.
                      undef if merging worked or was never attempted.
 
+    - set :: The set it was generated from.
+
+    - cache_id :: The ID for fetching this from the cache via get_cached or
+                  mojo-virani. undef if the results did not go into the cache
+                  under a standard cache name.
+
     - success_count :: A count of successfully processed PCAPs.
 
     - filter :: The used filter.
@@ -1135,6 +1296,7 @@ sub get_pcap_local {
 	# The return hash and what will be used for the cache JSON
 	# req_end stuff set later
 	my $to_return = {
+		set            => $opts{set},
 		pcaps          => $to_check,
 		pcap_glob      => $pcap_glob,
 		pcap_count     => 0,
@@ -1159,6 +1321,15 @@ sub get_pcap_local {
 		req_start_s    => $req_start->epoch,
 		ts_is_unixtime => $ts_is_unixtime,
 	};
+
+	# note the cache ID if the cache file is named such that it will be
+	# usable via list_cached/get_cached
+	my ( $cache_volume, $cache_directories, $cache_basename ) = File::Spec->splitpath($cache_file);
+	if ( $cache_basename =~ $cache_id_regex ) {
+		$to_return->{cache_id} = $cache_basename;
+	} else {
+		$to_return->{cache_id} = undef;
+	}
 
 	# puts together the tshark filter if needed
 	my $tshark_filter = $opts{filter};

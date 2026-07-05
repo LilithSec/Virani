@@ -15,6 +15,21 @@ To use this as a CGI script, copy this to location of the CGI bin.
 May be used as a fast CGI script via running this locally as a daemon and forwarding
 that path to the where it is listening on.
 
+=head1 CACHED SEARCHES
+
+Previously ran searches sitting in the cache may be listed and fetched via
+the parameters below. Both are subject to the usual API key/IP checks.
+
+    - list_cached=1 :: Return a JSON array of the cached searches. May be
+                       combined with set=<set> to limit it to a single set.
+                       See Virani->list_cached for the keys of the items.
+
+    - cached=<id> :: Return the PCAP for the specified cache ID, as found via
+                     list_cached=1 or the cache_id metadata key. If combined
+                     with get_meta=1, the metadata JSON is returned instead.
+                     404 is returned if the ID is unknown or the PCAP was
+                     never generated.
+
 =cut
 
 use Mojolicious::Lite -signatures;
@@ -72,7 +87,56 @@ sub the_stuff {
 		);
 		$virani->verbose( 'info', 'Returned set list to ' . $remote_ip );
 		return;
-	}
+	} ## end if ( $c->param('get_sets') )
+
+	# if asked for a list of cached searches, return it and be done
+	if ( $c->param('list_cached') ) {
+		my $set_param = $c->param('set');
+		if ( defined($set_param) && $set_param eq '' ) {
+			$set_param = undef;
+		}
+		my $cached;
+		eval { $cached = $virani->list_cached( set => $set_param ); };
+		if ($@) {
+			$c->render( text => "Listing cached searches failed... please see syslog\n", status => 400, );
+			$virani->verbose( 'err', 'list_cached failed: ' . $@ );
+			return;
+		}
+		my $json = JSON->new->allow_nonref->canonical(1)->pretty;
+		$c->render( text => $json->encode($cached) );
+		$virani->verbose( 'info', 'Returned cached search list to ' . $remote_ip );
+		return;
+	} ## end if ( $c->param('list_cached') )
+
+	# if asked for a cached search, return it and be done
+	my $cached_id = $c->param('cached');
+	if ( defined($cached_id) && $cached_id ne '' ) {
+		my $cached_what = 'pcap';
+		if ( $c->param('get_meta') ) {
+			$cached_what = 'json';
+		}
+		my $cached_file;
+		eval { $cached_file = $virani->get_cached( id => $cached_id, what => $cached_what ); };
+		if ($@) {
+			$c->render( text => "No such cached search\n", status => 404, );
+			$virani->verbose( 'err', 'get_cached failed for "' . $cached_id . '": ' . $@ );
+			return;
+		}
+		$virani->verbose( 'info', 'returning cached ' . $cached_what . ' ' . $cached_file );
+
+		# if this fails, it is a old version of Mojolicious
+		eval {
+			$c->res->headers->content_type('application/x-download');
+			$c->reply->file($cached_file);
+		};
+		if ($@) {
+			use File::Slurp;
+			my $raw = read_file($cached_file);
+			$c->render( data => $raw );
+		}
+		$virani->verbose( 'info', 'finished returning cached ' . $cached_file );
+		return;
+	} ## end if ( defined($cached_id) && $cached_id ne ...)
 
 	# if the set is not specified, use the default
 	my $set = $c->param('set');

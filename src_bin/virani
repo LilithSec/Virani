@@ -22,6 +22,14 @@ virani B<--list-sets> [B<--config> <file>]
 
 virani B<-r> <remote> B<--list-sets> [B<-a> <apikey>] [B<-k>]
 
+virani B<--list-cached> [B<--set> <set>] [B<--config> <file>]
+
+virani B<-r> <remote> B<--list-cached> [B<--set> <set>] [B<-a> <apikey>] [B<-k>]
+
+virani B<--cached> <id> [B<-w> <output>] [B<--meta>] [B<--config> <file>]
+
+virani B<-r> <remote> B<--cached> <id> [B<-w> <output>] [B<--meta>] [B<-a> <apikey>] [B<-k>]
+
 =head1 DESCRIPTION
 
 =head1 LOCAL
@@ -98,6 +106,25 @@ the default set as well.
 
 May be used either locally or with B<-r>.
 
+=head2 --list-cached
+
+Print the cached searches as JSON and exit. B<--set> may be used to
+limit it to a single set.
+
+May be used either locally or with B<-r>.
+
+=head2 --cached <id>
+
+Fetch a cached search by its cache ID, as found via B<--list-cached>.
+The PCAP is written to the file specified via B<-w> and the metadata
+JSON printed. If B<--meta> is given, only the metadata JSON is printed.
+
+May be used either locally or with B<-r>.
+
+=head2 --meta
+
+With B<--cached>, only print the metadata JSON, skipping the PCAP.
+
 =head2 --config <config>
 
 Config file to use.
@@ -144,6 +171,7 @@ use Getopt::Long;
 use Virani;
 use TOML;
 use File::Slurp;
+use File::Copy 'cp';
 use Time::Piece::Guess;
 use Virani::Client;
 use JSON;
@@ -176,6 +204,14 @@ sub help {
                   Default :: undef
 
 --list-sets       Print the configured sets as JSON and exit.
+
+--list-cached     Print the cached searches as JSON and exit.
+                  May be limited to a set via --set.
+
+--cached <id>     Fetch a cached search by cache ID. PCAP is written
+                  to the file specified via -w.
+
+--meta            With --cached, only print the metadata JSON.
 
 --config <config> Config file to use.
                   Default :: /usr/local/etc/virani.toml
@@ -210,39 +246,45 @@ my $format;
 my $remote;
 my $url;
 my $apikey;
-my $set           = 'default';
+my $set;
 my $config_virani = '/usr/local/etc/virani.toml';
 my $tmpdir;
-my $no_cache             = 0;
-my $quiet                = 0, my $verbose = 1;
+my $no_cache = 0;
+my $quiet    = 0, my $verbose = 1;
 my $type;
 my $verify_hostname      = 1;
 my $verify_hostname_flag = 0;
 my $timeout;
 my $buffer;
-my $list_sets = 0;
+my $list_sets   = 0;
+my $list_cached = 0;
+my $cached_id;
+my $meta_only = 0;
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
-	'version'   => \$version,
-	'v'         => \$version,
-	'help'      => \$help,
-	'h'         => \$help,
-	'f=s'       => \$filter,
-	's=s'       => \$start,
-	'e=s'       => \$end,
-	'w=s'       => \$write,
-	'r=s'       => \$remote,
-	'set=s'     => \$set,
-	'nc'        => \$no_cache,
-	'q'         => \$quiet,
-	'config=s'  => \$config_virani,
-	'a=s'       => \$apikey,
-	't=s'       => \$type,
-	'k'         => \$verify_hostname_flag,
-	'timeout=s' => \$timeout,
-	'buffer=s'  => \$buffer,
-	'list-sets' => \$list_sets,
+	'version'     => \$version,
+	'v'           => \$version,
+	'help'        => \$help,
+	'h'           => \$help,
+	'f=s'         => \$filter,
+	's=s'         => \$start,
+	'e=s'         => \$end,
+	'w=s'         => \$write,
+	'r=s'         => \$remote,
+	'set=s'       => \$set,
+	'nc'          => \$no_cache,
+	'q'           => \$quiet,
+	'config=s'    => \$config_virani,
+	'a=s'         => \$apikey,
+	't=s'         => \$type,
+	'k'           => \$verify_hostname_flag,
+	'timeout=s'   => \$timeout,
+	'buffer=s'    => \$buffer,
+	'list-sets'   => \$list_sets,
+	'list-cached' => \$list_cached,
+	'cached=s'    => \$cached_id,
+	'meta'        => \$meta_only,
 );
 
 if ($help) {
@@ -292,9 +334,12 @@ if ( -f $filter ) {
 	$filter =~ s/^\ //;
 } ## end if ( -f $filter )
 
-if ( !defined($start) && !$list_sets ) {
+# actions that don't involve a search, so don't require -s and -e
+my $no_search = $list_sets || $list_cached || defined($cached_id);
+
+if ( !defined($start) && !$no_search ) {
 	die('No start time set via -s');
-} elsif ( !defined($end) && !$list_sets ) {
+} elsif ( !defined($end) && !$no_search ) {
 	die('No end time set via -e');
 }
 
@@ -310,7 +355,7 @@ if ($verify_hostname_flag) {
 if ( defined($buffer) && $buffer !~ /^\d+$/ ) {
 	die( '--buffer is set to "' . $buffer . '" which is non-numeric' );
 }    # buffer is numeric, so apply it to the start and end
-elsif ( defined($buffer) && !$list_sets ) {
+elsif ( defined($buffer) && !$no_search ) {
 	my $start_obj = Time::Piece::Guess->guess_to_object( $start, 1 );
 	if ( !defined($start_obj) ) {
 		die( '-s value of "' . $start . '" could not be parsed by Time::Piece::Guess' );
@@ -328,7 +373,7 @@ elsif ( defined($buffer) && !$list_sets ) {
 	# get the new start time
 	$start = $start_obj->epoch;
 	$end   = $end_obj->epoch;
-} ## end elsif ( defined($buffer) )
+} ## end elsif ( defined($buffer) && !$no_search )
 
 my $start_obj;
 if ( defined($start) ) {
@@ -359,6 +404,22 @@ if ( !$remote ) {
 				default_set => $virani->get_default_set,
 			}
 		);
+		exit 0;
+	} ## end if ($list_sets)
+
+	if ($list_cached) {
+		my $json = JSON->new->allow_nonref->pretty->canonical(1);
+		print $json->encode( $virani->list_cached( set => $set ) );
+		exit 0;
+	}
+
+	if ( defined($cached_id) ) {
+		if ( !$meta_only ) {
+			my $pcap_path = $virani->get_cached( id => $cached_id );
+			cp( $pcap_path, $write ) || die( 'Failed to copy "' . $pcap_path . '" to "' . $write . '"... ' . $! );
+			print 'Written to ' . $write . "\n" . "Metadata...\n";
+		}
+		print read_file( $virani->get_cached( id => $cached_id, what => 'json' ) );
 		exit 0;
 	}
 
@@ -444,6 +505,20 @@ if ( !$remote ) {
 
 	if ($list_sets) {
 		print $vc->get_sets;
+		exit 0;
+	}
+
+	if ($list_cached) {
+		print $vc->list_cached( set => $set );
+		exit 0;
+	}
+
+	if ( defined($cached_id) ) {
+		my $raw_json = $vc->fetch_cached( id => $cached_id, file => $write, meta_only => $meta_only );
+		if ( !$meta_only ) {
+			print 'Written to ' . $write . "\n" . "Metadata...\n";
+		}
+		print $raw_json;
 		exit 0;
 	}
 

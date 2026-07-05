@@ -19,6 +19,14 @@ Revision history for Virani
        - skip mergecap when there is only a single PCAP to merge, moving or
          copying it instead
        - try hardlinking before copying when placing the output file
+       - cached searches are now listable and fetchable... Virani->list_cached
+         and Virani->get_cached, exposed via mojo-virani as the list_cached=1
+         and cached=<id> params, with the latter combinable with get_meta=1,
+         and remotely fetchable via Virani::Client->list_cached and
+         Virani::Client->fetch_cached or virani --list-cached and
+         virani --cached <id>
+       - the metadata JSON now includes the set it was generated from as the
+         key set and the cache ID for fetching it as the key cache_id
        - SECURITY: fix default allowed_subnets entry of '192.168.0.0/', which
          parsed as a /0 and matched any IP, to '192.168.0.0/16'
        - bpf2tshark: fix handling of '(', which was never matched, fix ether
