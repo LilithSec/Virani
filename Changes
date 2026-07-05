@@ -5,6 +5,11 @@ Revision history for Virani
          via mojo-virani as the get_sets=1 param and remotely fetchable via
          Virani::Client->get_sets or virani --list-sets
        - misc. minor cleanups
+       - get_pcap_local now checks that tcpdump/tshark and mergecap can be
+         found in the path before generating PCAPs and dies with a clear
+         error if not
+       - add merge_error key to the get_pcap_local metadata, containing the
+         mergecap error message if merging failed
        - SECURITY: fix default allowed_subnets entry of '192.168.0.0/', which
          parsed as a /0 and matched any IP, to '192.168.0.0/16'
        - bpf2tshark: fix handling of '(', which was never matched, fix ether

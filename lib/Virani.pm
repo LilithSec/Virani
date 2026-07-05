@@ -10,7 +10,7 @@ use File::Find::IncludesTimeRange;
 use File::Find::Rule;
 use Digest::MD5 qw(md5_hex);
 use File::Spec;
-use IPC::Cmd qw(run);
+use IPC::Cmd qw(run can_run);
 use File::Copy "cp";
 use Sys::Syslog;
 use JSON;
@@ -813,6 +813,9 @@ The return is a hash reference that includes the following keys.
     - path :: The path to the results file. If undef, unable it was unable
               to process any of them.
 
+    - merge_error :: The error message from mergecap if merging failed.
+                     undef if merging worked or was never attempted.
+
     - success_count :: A count of successfully processed PCAPs.
 
     - filter :: The used filter.
@@ -924,6 +927,15 @@ sub get_pcap_local {
 		return $to_return;
 	} ## end if ($return_cache)
 
+	# not cached, so PCAPs will need generated... make sure the required binaries
+	# are present before starting so it can fail with a clear error
+	my $filter_bin = $opts{type} eq 'tcpdump' ? 'tcpdump' : 'tshark';
+	foreach my $bin ( $filter_bin, 'mergecap' ) {
+		if ( !can_run($bin) ) {
+			die( 'The command "' . $bin . '" is required for PCAP generation, but was not found in the path' );
+		}
+	}
+
 	# set the padding
 	my $start = $opts{start} - $opts{padding};
 	my $end   = $opts{end} + $opts{padding};
@@ -967,6 +979,7 @@ sub get_pcap_local {
 		success_count  => 0,
 		path           => $cache_file,
 		filter         => $opts{filter},
+		merge_error    => undef,
 		total_size     => 0,
 		failed_size    => 0,
 		success_size   => 0,
@@ -1050,6 +1063,8 @@ sub get_pcap_local {
 		if ($success) {
 			$self->verbose( 'info', "PCAPs merged into " . $cache_file );
 		} else {
+			$to_return->{merge_error} = $error_message;
+
 			# if verbose print different messages if mergecap generated a output file or not when it failed
 			if ( -f $cache_file ) {
 				$self->verbose( 'warning', "PCAPs partially(output file generated) failed " . $error_message );
