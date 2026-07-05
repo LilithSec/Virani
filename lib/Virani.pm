@@ -1,6 +1,6 @@
 package Virani;
 
-use 5.006;
+use 5.010;
 use strict;
 use warnings;
 use TOML;
@@ -47,7 +47,7 @@ Initiates the Virani object from the specified file.
 =cut
 
 sub new_from_conf {
-	my ( $blank, %opts ) = @_;
+	my ( $class, %opts ) = @_;
 
 	if ( !defined( $opts{conf} ) ) {
 		$opts{conf} = '/usr/local/etc/virani.toml';
@@ -67,23 +67,22 @@ sub new_from_conf {
 		die($error);
 	}
 
-	my $toml;
-	eval { $toml = from_toml($raw_toml); };
-	if ($@) {
-		die($@);
+	my ( $toml, $err ) = from_toml($raw_toml);
+	if ( !defined($toml) ) {
+		die( 'Failed to parse the config file, "' . $opts{conf} . '"... ' . ( $err // 'unknown error' ) );
 	}
 
-	return Virani->new( %{$toml} );
+	return $class->new( %{$toml} );
 } ## end sub new_from_conf
 
 =head2 new
 
 Initiates the object.
 
-    - allowed_subnets :: The allowed subnets for fetching PCAPs for mojo-varini.
-        Defaults :: [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ]
+    - allowed_subnets :: The allowed subnets for fetching PCAPs for mojo-virani.
+        Defaults :: [ '192.168.0.0/16', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ]
 
-    - apikey :: Optional API key for mojo-varini.
+    - apikey :: Optional API key for mojo-virani.
         Defaults :: undef
 
     - auth_by_IP_only :: Auth by IP only and don't use a API key.
@@ -106,15 +105,15 @@ Initiates the object.
     - pcap_glob :: The glob to use for matching files.
         Default :: *.pcap*
 
-    - ts_is_unixtime :: The timestamp is unixtime and does not requires additional processing.
+    - ts_is_unixtime :: The timestamp is unixtime and does not require additional processing.
         Default :: 1
 
     - verbose :: Print verbose info.
         Default :: 1
 
     - type :: Either tcpdump, tshark, or bpf2tshark, which to use for filtering PCAP files in the
-              specified time slot. tcpdump is faster, but in general will not nicely handles
-              some VLAN types. For that tshark is needed, but it is signfigantly slower. bpf2tshark
+              specified time slot. tcpdump is faster, but in general will not nicely handle
+              some VLAN types. For that tshark is needed, but it is significantly slower. bpf2tshark
               is handled via Virani->bpf2tshark and that should be seen for more info on that.
         Default :: tcpdump
 
@@ -135,21 +134,20 @@ For sets, the following keys are usable, of which only path is required.
 
     - type :: The default filter type to use with this set.
 
-    - ts_is_unixtime :: The timestamp is unixtime and does not requires additional processing.
+    - ts_is_unixtime :: The timestamp is unixtime and does not require additional processing.
 
 =cut
 
 sub new {
-	my ( $blank, %opts ) = @_;
+	my ( $class, %opts ) = @_;
 
 	my $self = {
-		allowed_subnets   => [ '192.168.0.0/', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
+		allowed_subnets   => [ '192.168.0.0/16', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
 		apikey            => undef,
 		auth_by_IP_only   => 1,
 		default_set       => 'default',
 		cache             => '/var/cache/virani',
 		default_regex     => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
-		default_max_time  => '3600',
 		verbose_to_syslog => 0,
 		verbose           => 1,
 		type              => 'tcpdump',
@@ -163,7 +161,7 @@ sub new {
 		},
 
 	};
-	bless $self;
+	bless $self, $class;
 
 	if ( defined( $opts{allowed_subnets} ) && ref( $opts{allowed_subnets} ) eq 'ARRAY' ) {
 		$self->{allowed_subnets} = $opts{allowed_subnets};
@@ -173,15 +171,15 @@ sub new {
 
 	if ( defined( $opts{sets} ) && ref( $opts{sets} ) eq 'HASH' ) {
 		$self->{sets} = $opts{sets};
-	} elsif ( defined( $opts{sets} ) && ref( $opts{allowed_subnets} ) ne 'HASH' ) {
+	} elsif ( defined( $opts{sets} ) && ref( $opts{sets} ) ne 'HASH' ) {
 		die("$opts{sets} defined, but not a hash");
 	}
 
 	# real in basic values
 	my @real_in = (
-		'apikey',           'default_set',       'cache',     'padding',
-		'default_max_time', 'verbose_to_syslog', 'verbose',   'auth_by_IP_only',
-		'type',             'ts_is_unixtime',    'pcap_glob', 'default_regex'
+		'apikey',            'default_set', 'cache',           'padding',
+		'verbose_to_syslog', 'verbose',     'auth_by_IP_only', 'type',
+		'ts_is_unixtime',    'pcap_glob',   'default_regex'
 	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
@@ -226,9 +224,9 @@ Does a quick and dumb conversion of a BPF filter to tshark.
     not src host $host -> ip.src != $host
 
     dst $host -> ip.dst == $host
-    not host $host -> ip.dst != $host
+    not dst $host -> ip.dst != $host
 
-    src src $host -> ip.src == $host
+    src $host -> ip.src == $host
     not src $host -> ip.src != $host
 
 =cut
@@ -277,7 +275,7 @@ sub bpf2tshark {
 		}
 
 		# handles opening (
-		elsif ( $item eq ')' ) {
+		elsif ( $item eq '(' ) {
 			if ($not) {
 				push( @tshark_args, '!(' );
 			} else {
@@ -289,8 +287,8 @@ sub bpf2tshark {
 
 		# and/or
 		elsif ( $item eq 'or' || $item eq 'and' ) {
-			# make sure we not add it twice
-			if ( $tshark_args[$#tshark_args] ne 'and' && $tshark_args[$#tshark_args] ne 'or' ) {
+			# make sure we do not add it twice or add it as the first item
+			if ( @tshark_args && $tshark_args[-1] ne 'and' && $tshark_args[-1] ne 'or' ) {
 				push( @tshark_args, $item );
 			}
 			$not      = 0;
@@ -334,18 +332,18 @@ sub bpf2tshark {
 			&& $previous[0] eq 'ether'
 			&& $previous[1] eq 'src' )
 		{
-			push( @tshark_args, 'etc.src', $equality, $item );
+			push( @tshark_args, 'eth.src', $equality, $item );
 			$not      = 0;
 			@previous = ();
 		}
 
-		# add ether src $ether
+		# add ether dst $ether
 		elsif (defined( $previous[0] )
 			&& defined( $previous[1] )
 			&& $previous[0] eq 'ether'
 			&& $previous[1] eq 'dst' )
 		{
-			push( @tshark_args, 'etc.dst', $equality, $item );
+			push( @tshark_args, 'eth.dst', $equality, $item );
 			$not      = 0;
 			@previous = ();
 		}
@@ -356,7 +354,7 @@ sub bpf2tshark {
 			&& $previous[0] eq 'ether'
 			&& $previous[1] eq 'host' )
 		{
-			push( @tshark_args, 'etc.addr', $equality, $item );
+			push( @tshark_args, 'eth.addr', $equality, $item );
 			$not      = 0;
 			@previous = ();
 		}
@@ -453,7 +451,7 @@ are consistent for cacheing, even if their white space differs.
 
 A undef passed to it will return ''.
 
-Will die if the filter matches /^\w*\-/ as it starts with a '-', which
+Will die if the cleaned filter starts with a '-', which
 tcpdump will interpret as a switch.
 
     my $cleaned_bpf=$virani->filter_clean($bpf);
@@ -468,10 +466,6 @@ sub filter_clean {
 		return '';
 	}
 
-	if ( $string =~ /^\w*\-/ ) {
-		die( 'The filter, "' . $string . '", begins with a "-", which dieing for safety reasons' );
-	}
-
 	# remove white space at the start and end
 	$string =~ s/^\s*//g;
 	$string =~ s/\s+$//g;
@@ -479,14 +473,18 @@ sub filter_clean {
 	# replace all multiple white space characters with a single space
 	$string =~ s/\s\s+/ /g;
 
+	if ( $string =~ /^-/ ) {
+		die( 'The filter, "' . $string . '", begins with a "-", so dying for safety reasons' );
+	}
+
 	return $string;
 } ## end sub filter_clean
 
-=head1 check_apikey
+=head2 check_apikey
 
 Checks the API key.
 
-If auth_via_IP_only is 1, this will always return true.
+If auth_by_IP_only is 1, this will always return true.
 
 	my $apikey=$c->param('apikey');
 	if (!$virani->check_apikey($apikey)) {
@@ -519,7 +517,7 @@ sub check_apikey {
 	return 1;
 } ## end sub check_apikey
 
-=head1 check_remote_ip
+=head2 check_remote_ip
 
 Checks if the remote IP is allowed or not.
 
@@ -542,24 +540,26 @@ sub check_remote_ip {
 		return 0;
 	}
 
-	my $allowed_subnets;
-	eval { $allowed_subnets = subnet_matcher( @{ $self->{allowed_subnets} } ); };
-	if ($@) {
-		die( 'Failed it init subnet matcher... ' . $@ );
-	} elsif ( !defined($allowed_subnets) ) {
-		die('Failed it init subnet matcher... sub_matcher returned undef');
+	# allowed_subnets is only set at construction, so the matcher only needs built once
+	if ( !defined( $self->{allowed_subnets_matcher} ) ) {
+		eval { $self->{allowed_subnets_matcher} = subnet_matcher( @{ $self->{allowed_subnets} } ); };
+		if ($@) {
+			die( 'Failed to init subnet matcher... ' . $@ );
+		} elsif ( !defined( $self->{allowed_subnets_matcher} ) ) {
+			die('Failed to init subnet matcher... subnet_matcher returned undef');
+		}
 	}
 
-	if ( $allowed_subnets->($ip) ) {
+	if ( $self->{allowed_subnets_matcher}->($ip) ) {
 		return 1;
 	}
 
 	return 0;
 } ## end sub check_remote_ip
 
-=head1 check_type
+=head2 check_type
 
-Verify if the check is valid or note
+Verify if the type is valid or not.
 
 Returns 0/1 based on if it a known type or not.
 
@@ -586,7 +586,7 @@ sub check_type {
 
 =head2 get_default_set
 
-Returns the deefault set to use.
+Returns the default set to use.
 
     my $set=$virani->get_default_set;
 
@@ -598,15 +598,88 @@ sub get_default_set {
 	return $self->{default_set};
 }
 
+# Internal helper that resolves and sanity checks the common options taken by
+# get_cache_file and get_pcap_local. Takes a hash ref of the options and fills
+# in set, type, padding, filter, auto_no_cache, and no_cache. Dies on anything
+# not sane.
+sub _resolve_opts {
+	my ( $self, $opts ) = @_;
+
+	# if set is undef or blank, use the default
+	if ( !defined( $opts->{set} ) || $opts->{set} eq '' ) {
+		$opts->{set} = $self->get_default_set;
+	}
+
+	# make sure the set exists
+	if ( !defined( $self->{sets}->{ $opts->{set} } ) ) {
+		die( 'The set "' . $opts->{set} . '" is not defined' );
+	} elsif ( !defined( $self->{sets}->{ $opts->{set} }{path} ) ) {
+		die( 'The path for set "' . $opts->{set} . '" is not defined' );
+	} elsif ( !-d $self->{sets}->{ $opts->{set} }{path} ) {
+		die(      'The path for set "'
+				. $opts->{set} . '", "'
+				. $self->{sets}->{ $opts->{set} }{path}
+				. '" does not exist or is not a directory' );
+	}
+
+	# make sure we have something for type and check to make sure it is sane
+	if ( !defined( $opts->{type} ) ) {
+		$opts->{type} = $self->{type};
+		if ( defined( $self->{sets}{ $opts->{set} }{type} ) ) {
+			$opts->{type} = $self->{sets}{ $opts->{set} }{type};
+		}
+	}
+
+	# check it here incase the config includes something off
+	if ( !$self->check_type( $opts->{type} ) ) {
+		die( 'type "' . $opts->{type} . '" is not a supported type, tcpdump, tshark, or bpf2tshark' );
+	}
+
+	# basic sanity checking
+	if ( !defined( $opts->{start} ) ) {
+		die('$opts{start} not defined');
+	} elsif ( !defined( $opts->{end} ) ) {
+		die('$opts{end} not defined');
+	} elsif ( ref( $opts->{start} ) ne 'Time::Piece' ) {
+		die('$opts{start} is not a Time::Piece object');
+	} elsif ( ref( $opts->{end} ) ne 'Time::Piece' ) {
+		die('$opts{end} is not a Time::Piece object');
+	}
+
+	if ( !defined( $opts->{auto_no_cache} ) ) {
+		$opts->{auto_no_cache} = 1;
+	}
+
+	if ( !defined( $opts->{no_cache} ) ) {
+		$opts->{no_cache} = 0;
+	}
+
+	# get the padding and make sure it is sane
+	if ( !defined( $opts->{padding} ) ) {
+		$opts->{padding} = $self->{padding};
+		if ( defined( $self->{sets}{ $opts->{set} }{padding} ) ) {
+			$opts->{padding} = $self->{sets}{ $opts->{set} }{padding};
+		}
+	}
+	if ( $opts->{padding} !~ /^\d+$/ ) {
+		die( '"' . $opts->{padding} . '" is not a numeric padding value' );
+	}
+
+	# clean the filter
+	$opts->{filter} = $self->filter_clean( $opts->{filter} );
+
+	return;
+} ## end sub _resolve_opts
+
 =head2 get_cache_file
 
-Takes the same args as get_pcap_lcal.
+Takes the same args as get_pcap_local.
 
 Returns the path to the file.
 
     my $cache_file=$virani->get_cache_file(%opts);
-    if (! -f $cache_file.'json'){
-        echo "Cache file metadata does not exist, so either get_pcap_local died or it has not been ran\n";
+    if (! -f $cache_file.'.json'){
+        print "Cache file metadata does not exist, so either get_pcap_local died or it has not been ran\n";
     }
 
 =cut
@@ -614,62 +687,15 @@ Returns the path to the file.
 sub get_cache_file {
 	my ( $self, %opts ) = @_;
 
-	# make sure we have something for type and check to make sure it is sane
-	if ( !defined( $opts{type} ) ) {
-		$opts{type} = $self->{type};
-		if ( defined( $self->{sets}{ $opts{set} }{type} ) ) {
-			$opts{type} = $self->{sets}{ $opts{set} }{type};
-		}
-	}
+	$self->_resolve_opts( \%opts );
 
-	# check it here incase the config includes something off
-	if ( !$self->check_type( $opts{type} ) ) {
-		die( 'type "' . $opts{type} . '" is not a supported type, tcpdump or tshark,' );
-	}
-
-	# basic sanity checking
-	if ( !defined( $opts{start} ) ) {
-		die('$opts{start} not defined');
-	} elsif ( !defined( $opts{end} ) ) {
-		die('$opts{start} not defined');
-	} elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
-		die('$opts{start} is not a Time::Piece object');
-	} elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
-		die('$opts{end} is not a Time::Piece object');
-	} elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+/ ) {
-		die('$opts{padding} is not numeric');
-	}
-
-	if ( !defined( $opts{auto_no_cache} ) ) {
-		$opts{auto_no_cache} = 1;
-	}
-
-	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
-		$opts{set} = $self->get_default_set;
-	}
-
-	# make sure the set exists
-	if ( !defined( $self->{sets}->{ $opts{set} } ) ) {
-		die( 'The set "' . $opts{set} . '" is not defined' );
-	} elsif ( !defined( $self->{sets}->{ $opts{set} }{path} ) ) {
-		die( 'The path for set "' . $opts{set} . '" is not defined' );
-	} elsif ( !-d $self->{sets}->{ $opts{set} }{path} ) {
-		die(      'The path for set "'
-				. $opts{set} . '", "'
-				. $self->{sets}->{ $opts{set} }{path}
-				. '" is not exist or is not a directory' );
-	}
-
-	# get the paddimg, make sure it is sane, and apply it
-	if ( !defined( $opts{padding} ) ) {
-		$opts{padding} = $self->{padding};
-		if ( defined( $self->{sets}{ $opts{set} }{padding} ) ) {
-			$opts{padding} = $self->{sets}{ $opts{set} }{padding};
-		}
-	}
-
-	# clean the filter
-	$opts{filter} = $self->filter_clean( $opts{filter} );
+	my $cache_file_base
+		= $self->{cache} . '/'
+		. $opts{set} . '-'
+		. $opts{type} . '-'
+		. $opts{start}->epoch . '-'
+		. $opts{end}->epoch . '-'
+		. lc( md5_hex( $opts{filter} ) );
 
 	my $cache_file;
 	if ( defined( $opts{file} ) ) {
@@ -684,23 +710,16 @@ sub get_cache_file {
 					. '", does not exist' );
 		}
 
-		# figure what what to use as the cache file
+		# figure out what to use as the cache file
 		if ( $opts{no_cache} ) {
 			$cache_file = $opts{file};
-		} elsif ( $opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
+		} elsif ( -d $self->{cache} && -w $self->{cache} ) {
+			$cache_file = $cache_file_base;
+		} elsif ( $opts{auto_no_cache} ) {
 			$cache_file = $opts{file};
-
-		} elsif ( $opts{auto_no_cache} && ( -d $self->{cache} || -w $self->{cache} ) ) {
-			$cache_file
-				= $self->{cache} . '/'
-				. $opts{set} . '-'
-				. $opts{type} . '-'
-				. $opts{start}->epoch . '-'
-				. $opts{end}->epoch . "-"
-				. lc( md5_hex( $opts{filter} ) );
-		} elsif ( !$opts{auto_no_cache} && ( !-d $self->{cache} || !-w $self->{cache} ) ) {
+		} else {
 			die(      '$opts{auto_no_cache} is false and $opts{no_cache} is false, but the cache dir "'
-					. $self->{dir}
+					. $self->{cache}
 					. '" does not exist, is not a dir, or is not writable' );
 		}
 	} else {
@@ -711,13 +730,7 @@ sub get_cache_file {
 			die( 'Cache dir,"' . $self->{cache} . '", is not writable' );
 		}
 
-		$cache_file
-			= $self->{cache} . '/'
-			. $opts{set} . '-'
-			. $opts{start}->epoch . '-'
-			. $opts{type} . '-'
-			. $opts{end}->epoch . "-"
-			. lc( md5_hex( $opts{filter} ) );
+		$cache_file = $cache_file_base;
 	} ## end else [ if ( defined( $opts{file} ) ) ]
 
 	return $cache_file;
@@ -750,7 +763,7 @@ Generates a PCAP locally and returns the path to it.
         - Default :: 0
 
     - auto_no_cache :: If the cache dir is being used and not writeable and a file
-                       as been specified, don't die, but use the output file name
+                       has been specified, don't die, but use the output file name
                        as the basis of for the tmp file.
         - Default :: 1
 
@@ -774,7 +787,7 @@ The return is a hash reference that includes the following keys.
     - path :: The path to the results file. If undef, unable it was unable
               to process any of them.
 
-    - success_found :: A count of successfully processed PCAPs.
+    - success_count :: A count of successfully processed PCAPs.
 
     - filter :: The used filter.
 
@@ -788,22 +801,22 @@ The return is a hash reference that includes the following keys.
 
     - padding :: The value of padding.
 
-    - start_s :: Start time in seconds since epoch, not including pading.
+    - start_s :: Start time in seconds since epoch, not including padding.
 
-    - end :: Send time in the format '%Y-%m-%dT%H:%M:%S%z'.
+    - start :: Start time in the format '%Y-%m-%dT%H:%M:%S%z'.
 
-    - end_s :: End time in seconds since epoch, not including pading.
+    - end_s :: End time in seconds since epoch, not including padding.
 
     - end :: End time in the format '%Y-%m-%dT%H:%M:%S%z'.
 
     - using_cache :: If the cache was used or not.
 
-    - req_start :: Timestamp of when the it started. In the format
+    - req_start :: Timestamp of when the request started. In the format
                    %Y-%m-%dT%H:%M:%S%z
 
     - req_start_s :: Same as req_start, but unixtime.
 
-    - req_end :: Timestamp of when the it finished. In the format
+    - req_end :: Timestamp of when the request finished. In the format
                  %Y-%m-%dT%H:%M:%S%z
 
     - req_end_s :: Same as req_end, but unixtime.
@@ -818,19 +831,15 @@ sub get_pcap_local {
 	# start of the request
 	my $req_start = localtime;
 
-	# if set is undef or blank, use the default
-	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
-		$opts{set} = $self->get_default_set;
-	}
+	# resolve and sanity check set, type, padding, filter, and the cache options
+	$self->_resolve_opts( \%opts );
 	$self->verbose( 'info', 'Set: ' . $opts{set} );
-
-	# make sure we have something for type and check to make sure it is sane
-	if ( !defined( $opts{type} ) ) {
-		$opts{type} = $self->{type};
-		if ( defined( $self->{sets}{ $opts{set} }{type} ) ) {
-			$opts{type} = $self->{sets}{ $opts{set} }{type};
-		}
-	}
+	$self->verbose( 'info', 'Type: ' . $opts{type} );
+	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
+	$self->verbose( 'info', 'End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{end}->epoch );
+	$self->verbose( 'info', 'auto_no_cache: ' . $opts{auto_no_cache} );
+	$self->verbose( 'info', 'no_cache: ' . $opts{no_cache} );
+	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
 
 	# figure out what to use for $ts_is_unixtime
 	my $ts_is_unixtime;
@@ -849,66 +858,11 @@ sub get_pcap_local {
 	}
 	$self->verbose( 'info', 'PCAP Glob: ' . $pcap_glob );
 
-	# check it here incase the config includes something off
-	if ( !$self->check_type( $opts{type} ) ) {
-		die( 'type "' . $opts{type} . '" is not a supported type, tcpdump or tshark,' );
-	}
-	$self->verbose( 'info', 'Type: ' . $opts{type} );
-
-	# basic sanity checking
-	if ( !defined( $opts{start} ) ) {
-		die('$opts{start} not defined');
-	} elsif ( !defined( $opts{end} ) ) {
-		die('$opts{start} not defined');
-	} elsif ( ref( $opts{start} ) ne 'Time::Piece' ) {
-		die('$opts{start} is not a Time::Piece object');
-	} elsif ( ref( $opts{end} ) ne 'Time::Piece' ) {
-		die('$opts{end} is not a Time::Piece object');
-	} elsif ( defined( $opts{padding} ) && $opts{padding} !~ /^\d+$/ ) {
-		die('$opts{padding} is not numeric');
-	}
-	$self->verbose( 'info', 'Start: ' . $opts{start}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{start}->epoch );
-	$self->verbose( 'info', 'End: ' . $opts{end}->strftime('%Y-%m-%dT%H:%M:%S%z') . ', ' . $opts{end}->epoch );
-
-	if ( !defined( $opts{auto_no_cache} ) ) {
-		$opts{auto_no_cache} = 1;
-	}
-	$self->verbose( 'info', 'auto_no_cache: ' . $opts{auto_no_cache} );
-
-	if ( !defined( $opts{no_cache} ) ) {
-		$opts{no_cache} = 0;
-	}
-	$self->verbose( 'info', 'no_cache: ' . $opts{no_cache} );
-
-	# make sure the set exists
-	if ( !defined( $self->{sets}->{ $opts{set} } ) ) {
-		die( 'The set "' . $opts{set} . '" is not defined' );
-	} elsif ( !defined( $self->{sets}->{ $opts{set} }{path} ) ) {
-		die( 'The path for set "' . $opts{set} . '" is not defined' );
-	} elsif ( !-d $self->{sets}->{ $opts{set} }{path} ) {
-		die(      'The path for set "'
-				. $opts{set} . '", "'
-				. $self->{sets}->{ $opts{set} }{path}
-				. '" is not exist or is not a directory' );
-	}
-
-	# get the paddimg, make sure it is sane, and apply it
-	if ( !defined( $opts{padding} ) ) {
-		$opts{padding} = $self->{padding};
-		if ( defined( $self->{sets}{ $opts{set} }{padding} ) ) {
-			$opts{padding} = $self->{sets}{ $opts{set} }{padding};
-		}
-	}
-
-	# clean the filter
-	$opts{filter} = $self->filter_clean( $opts{filter} );
-	$self->verbose( 'info', 'Filter: ' . $opts{filter} );
-
 	# get the cache file to use
 	my $cache_file;
 	eval { $cache_file = $self->get_cache_file(%opts); };
 	if ($@) {
-		die( '$self->get_cache_files(%opts) failed... ' . $@ );
+		die( '$self->get_cache_file(%opts) failed... ' . $@ );
 	}
 
 	# if applicable return the cache file
@@ -943,11 +897,6 @@ sub get_pcap_local {
 		$to_return->{using_cache} = 1;
 		return $to_return;
 	} ## end if ($return_cache)
-
-	# check it here incase the config includes something off
-	if ( $opts{padding} !~ /^[0-9]+$/ ) {
-		die( '"' . $opts{padding} . '" is not a numeric' );
-	}
 
 	# set the padding
 	my $start = $opts{start} - $opts{padding};
@@ -1023,9 +972,7 @@ sub get_pcap_local {
 	my $to_merge = [ 'mergecap', '-w', $cache_file ];
 	foreach my $pcap ( @{$to_check} ) {
 
-		# get stat info for the file
-		my ( $dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks )
-			= stat($pcap);
+		my $size = ( -s $pcap ) // 0;
 		$to_return->{total_size} += $size;
 
 		$self->verbose( 'info', 'Processing ' . $pcap . ", size=" . $size . " ..." );
@@ -1050,10 +997,7 @@ sub get_pcap_local {
 			push( @{$to_merge}, $tmp_file );
 			push( @tmp_files,   $tmp_file );
 
-			# get stat info for the tmp file
-			( $dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks )
-				= stat($tmp_file);
-			$to_return->{tmp_size} += $size;
+			$to_return->{tmp_size} += ( -s $tmp_file ) // 0;
 
 		} else {
 			$to_return->{failed}{$pcap} = $error_message;
@@ -1068,7 +1012,7 @@ sub get_pcap_local {
 		$to_return->{pcap_count}++;
 	} ## end foreach my $pcap ( @{$to_check} )
 
-	# only try merging if we had more than one success
+	# only try merging if we had at least one success
 	if ( $to_return->{success_count} > 0 ) {
 
 		$self->verbose( 'info', "Merging PCAPs... " . join( ' ', @{$to_merge} ) );
@@ -1080,7 +1024,7 @@ sub get_pcap_local {
 		if ($success) {
 			$self->verbose( 'info', "PCAPs merged into " . $cache_file );
 		} else {
-			# if verbose print different messages if mergecap generated a ouput file or not when it fialed
+			# if verbose print different messages if mergecap generated a output file or not when it failed
 			if ( -f $cache_file ) {
 				$self->verbose( 'warning', "PCAPs partially(output file generated) failed " . $error_message );
 			} else {
@@ -1095,13 +1039,16 @@ sub get_pcap_local {
 
 		# don't bother checking size if the file was not generated
 		if ( -f $cache_file ) {
-			my ( $dev, $ino, $mode, $nlink, $uid, $gid, $rdev, $size, $atime, $mtime, $ctime, $blksize, $blocks )
-				= stat($cache_file);
-			$to_return->{final_size} = $size;
+			$to_return->{final_size} = ( -s $cache_file ) // 0;
 		}
 
 	} else {
 		$self->verbose( 'err', "No PCAPs to merge" );
+	}
+
+	# if the output file was never generated, note that via setting path to undef
+	if ( !-f $cache_file ) {
+		$to_return->{path} = undef;
 	}
 
 	$self->verbose( 'info',
@@ -1127,8 +1074,8 @@ sub get_pcap_local {
 	my $raw_json = $json->encode($to_return);
 	write_file( $cache_file . '.json', $raw_json );
 
-	# if the file and cache file are the same, then the cache dir not accessing, so no need to copy it
-	if ( defined( $opts{file} ) && $cache_file ne $opts{file} ) {
+	# if the file and cache file are the same, then the cache dir is not being used, so no need to copy it
+	if ( defined( $to_return->{path} ) && defined( $opts{file} ) && $cache_file ne $opts{file} ) {
 		$self->verbose( 'info', 'Copying "' . $cache_file . '" to "' . $opts{file} . '"' );
 		cp( $cache_file, $opts{file} );
 	}
@@ -1173,10 +1120,10 @@ sub get_set_path {
 Set if it should be verbose or not.
 
     # be verbose
-    $virani->verbose(1);
+    $virani->set_verbose(1);
 
     # do not be verbose
-    $virani->verbose(0);
+    $virani->set_verbose(0);
 
 =cut
 
@@ -1188,7 +1135,7 @@ sub set_verbose {
 
 =head2 set_verbose_to_syslog
 
-Set if it should be verbose or not.
+Set if verbose messages should be sent to syslog or not.
 
     # send verbose messages to syslog
     $virani->set_verbose_to_syslog(1);
@@ -1206,7 +1153,7 @@ sub set_verbose_to_syslog {
 
 =head2 verbose
 
-Prints out error messages. This is inteded to be internal.
+Prints out verbose messages. This is intended to be internal.
 
 Only sends the string if verbose is enabled.
 
@@ -1258,14 +1205,14 @@ With daemonlogger setup along the lines of like below...
     daemonlogger_enable="YES"
     daemonlogger_flags="-f /usr/local/etc/daemonlogger.bpf -d -l /var/log/daemonlogger -t 120"
 
-The following can be made available via mojo-varini or locally via varini with the set name of
+The following can be made available via mojo-virani or locally via virani with the set name of
 default as below.
 
     allowed_subnets=["192.168.14.0/23", "127.0.0.1/8"]
     [sets.default]
     path='/var/log/daemonlogger'
 
-If you want to use 'init/freebsd' to start mojo-virani, you just need to copy it
+If you want to use 'init/freebsd' to start mojo-virani, you just need to copy
 it to '/usr/local/etc/rc.d/virani' and add the following or the like to '/etc/rc.conf'.
 
     virani_enable="YES"

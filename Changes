@@ -2,6 +2,27 @@ Revision history for Virani
 
 ?.?.?  ?/?
        - misc. minor cleanups
+       - SECURITY: fix default allowed_subnets entry of '192.168.0.0/', which
+         parsed as a /0 and matched any IP, to '192.168.0.0/16'
+       - bpf2tshark: fix handling of '(', which was never matched, fix ether
+         fields being emitted as etc.* instead of eth.*, and don't warn when
+         the filter starts with and/or
+       - fix cache file naming differing between get_cache_file with and
+         without a file specified, causing needless cache misses
+       - fix get_cache_file returning undef when auto_no_cache=0 and the
+         cache dir is usable
+       - fix sets ref check in new checking allowed_subnets instead
+       - new_from_conf now reports TOML parse errors properly
+       - filter_clean now trims whitespace before the leading '-' check so
+         ' -foo' can't slip through
+       - bless into the passed class so subclassing works
+       - get_pcap_local sets path to undef if the output file was never
+         generated and skips the copy
+       - dedup option validation between get_cache_file and get_pcap_local
+       - cache the Net::Subnet matcher instead of rebuilding it per call
+       - remove the unused default_max_time config var
+       - require perl 5.10 as named captures are used
+       - misc POD fixes, =head1 to =head2 for the check_* methods
 
 1.2.0  2024-10-21/10:#0
        - misc POD cleanup
