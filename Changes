@@ -1,6 +1,9 @@
 Revision history for Virani
 
 ?.?.?  ?/?
+       - add Virani->get_sets for getting a list of configured sets, exposed
+         via mojo-virani as the get_sets=1 param and remotely fetchable via
+         Virani::Client->get_sets or virani --list-sets
        - misc. minor cleanups
        - SECURITY: fix default allowed_subnets entry of '192.168.0.0/', which
          parsed as a /0 and matched any IP, to '192.168.0.0/16'

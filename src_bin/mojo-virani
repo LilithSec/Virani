@@ -59,6 +59,21 @@ sub the_stuff {
 		return;
 	}
 
+	# if asked for a list of sets, return it and be done
+	if ( $c->param('get_sets') ) {
+		my $json = JSON->new->allow_nonref->canonical(1)->pretty;
+		$c->render(
+			text => $json->encode(
+				{
+					sets        => $virani->get_sets,
+					default_set => $virani->get_default_set,
+				}
+			)
+		);
+		$virani->verbose( 'info', 'Returned set list to ' . $remote_ip );
+		return;
+	}
+
 	# if the set is not specified, use the default
 	my $set = $c->param('set');
 	if ( !defined($set) or $set eq '' ) {

@@ -18,6 +18,10 @@ B<--config> <file>] [B<-w> <output] [B<--nc>] [B<-a> <apikey>] [B<-k>]
 virani B<-r> <remote> B<-s> <start> B<-e> <end> [B<-t> <type>] [B<--sett> <set>]
 B<--config> <file>] [B<-w> <output] [B<--nc>] [B<-a> <apikey>] [B<-k>] <filter>
 
+virani B<--list-sets> [B<--config> <file>]
+
+virani B<-r> <remote> B<--list-sets> [B<-a> <apikey>] [B<-k>]
+
 =head1 DESCRIPTION
 
 =head1 LOCAL
@@ -86,6 +90,13 @@ If not specified will default to what ever the default is for that set.
 Set to use. If undef, uses whatever the default is.
 
 Default :: undef
+
+=head2 --list-sets
+
+Print the configured sets as JSON and exit. Includes the name of
+the default set as well.
+
+May be used either locally or with B<-r>.
 
 =head2 --config <config>
 
@@ -164,6 +175,8 @@ sub help {
 --set <set>      Set to use. If undef, uses whatever the default is.
                   Default :: undef
 
+--list-sets       Print the configured sets as JSON and exit.
+
 --config <config> Config file to use.
                   Default :: /usr/local/etc/virani.toml
 
@@ -207,6 +220,7 @@ my $verify_hostname      = 1;
 my $verify_hostname_flag = 0;
 my $timeout;
 my $buffer;
+my $list_sets = 0;
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
@@ -228,6 +242,7 @@ GetOptions(
 	'k'         => \$verify_hostname_flag,
 	'timeout=s' => \$timeout,
 	'buffer=s'  => \$buffer,
+	'list-sets' => \$list_sets,
 );
 
 if ($help) {
@@ -277,9 +292,9 @@ if ( -f $filter ) {
 	$filter =~ s/^\ //;
 } ## end if ( -f $filter )
 
-if ( !defined($start) ) {
+if ( !defined($start) && !$list_sets ) {
 	die('No start time set via -s');
-} elsif ( !defined($end) ) {
+} elsif ( !defined($end) && !$list_sets ) {
 	die('No end time set via -e');
 }
 
@@ -295,7 +310,7 @@ if ($verify_hostname_flag) {
 if ( defined($buffer) && $buffer !~ /^\d+$/ ) {
 	die( '--buffer is set to "' . $buffer . '" which is non-numeric' );
 }    # buffer is numeric, so apply it to the start and end
-elsif ( defined($buffer) ) {
+elsif ( defined($buffer) && !$list_sets ) {
 	my $start_obj = Time::Piece::Guess->guess_to_object( $start, 1 );
 	if ( !defined($start_obj) ) {
 		die( '-s value of "' . $start . '" could not be parsed by Time::Piece::Guess' );
@@ -316,14 +331,18 @@ elsif ( defined($buffer) ) {
 } ## end elsif ( defined($buffer) )
 
 my $start_obj;
-eval { $start_obj = Time::Piece::Guess->guess_to_object( $start, 1 ); };
-if ( $@ || !defined($start_obj) ) {
-	die( 'Failed to parse the start stamp,"' . $start . '",' );
+if ( defined($start) ) {
+	eval { $start_obj = Time::Piece::Guess->guess_to_object( $start, 1 ); };
+	if ( $@ || !defined($start_obj) ) {
+		die( 'Failed to parse the start stamp,"' . $start . '",' );
+	}
 }
 my $end_obj;
-eval { $end_obj = Time::Piece::Guess->guess_to_object( $end, 1 ); };
-if ( $@ || !defined($end_obj) ) {
-	die( 'Failed to parse the end timestamp,"' . $end . '",' );
+if ( defined($end) ) {
+	eval { $end_obj = Time::Piece::Guess->guess_to_object( $end, 1 ); };
+	if ( $@ || !defined($end_obj) ) {
+		die( 'Failed to parse the end timestamp,"' . $end . '",' );
+	}
 }
 
 # handles it if it is not remote
@@ -331,6 +350,17 @@ if ( !$remote ) {
 	my $virani = Virani->new_from_conf( conf => $config_virani );
 	$virani->set_verbose($verbose);
 	$virani->set_verbose_to_syslog(0);
+
+	if ($list_sets) {
+		my $json = JSON->new->allow_nonref->pretty->canonical(1);
+		print $json->encode(
+			{
+				sets        => $virani->get_sets,
+				default_set => $virani->get_default_set,
+			}
+		);
+		exit 0;
+	}
 
 	my $returned = $virani->get_pcap_local(
 		start    => $start_obj,
@@ -411,6 +441,12 @@ if ( !$remote ) {
 	}
 
 	my $vc = Virani::Client->new( url => $url, apikey => $apikey, verify_hostname => $verify_hostname );
+
+	if ($list_sets) {
+		print $vc->get_sets;
+		exit 0;
+	}
+
 	$vc->fetch(
 		start    => $start_obj,
 		end      => $end_obj,

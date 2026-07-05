@@ -598,6 +598,32 @@ sub get_default_set {
 	return $self->{default_set};
 }
 
+=head2 get_sets
+
+Returns a hash ref of the configured sets. The keys are the set
+names and the values are hash refs of the non-path settings for
+that set, any of type, padding, regex, ts_is_unixtime, or pcap_glob.
+
+    my $sets=$virani->get_sets;
+
+=cut
+
+sub get_sets {
+	my ($self) = @_;
+
+	my $sets = {};
+	foreach my $set_name ( keys( %{ $self->{sets} } ) ) {
+		$sets->{$set_name} = {};
+		foreach my $key ( 'type', 'padding', 'regex', 'ts_is_unixtime', 'pcap_glob' ) {
+			if ( defined( $self->{sets}{$set_name}{$key} ) ) {
+				$sets->{$set_name}{$key} = $self->{sets}{$set_name}{$key};
+			}
+		}
+	}
+
+	return $sets;
+} ## end sub get_sets
+
 # Internal helper that resolves and sanity checks the common options taken by
 # get_cache_file and get_pcap_local. Takes a hash ref of the options and fills
 # in set, type, padding, filter, auto_no_cache, and no_cache. Dies on anything

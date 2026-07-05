@@ -13,11 +13,11 @@ Virani::Client - Client for remotely accessing Virani vis HTTP or HTTPS.
 
 =head1 VERSION
 
-Version 0.0.2
+Version 0.1.0
 
 =cut
 
-our $VERSION = '0.0.2';
+our $VERSION = '0.1.0';
 
 =head1 SYNOPSIS
 
@@ -211,6 +211,48 @@ sub fetch {
 	}
 
 	return $raw_json;
+}
+
+=head2 get_sets
+
+Fetches the list of configured sets and the default set.
+
+Returns the raw unparsed JSON, a hash with two keys, 'sets', a hash
+of the configured sets, and 'default_set', the name of the default set.
+
+    my $raw_sets_json=$virani_client->get_sets;
+
+=cut
+
+sub get_sets {
+	my ($self) = @_;
+
+	my $ua = LWP::UserAgent->new(
+		protocols_allowed => [ 'http', 'https' ],
+		timeout           => $self->{timeout},
+	);
+	if ( $self->{verify_hostname} ) {
+		$ua->ssl_opts( verify_hostname => 1 );
+	}
+	else {
+		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
+	}
+
+	my $url = $self->{url} . '?get_sets=1';
+	if ( defined( $self->{apikey} ) ) {
+		$url = $url . '&apikey=' . $self->{apikey};
+	}
+
+	my $res;
+	eval { $res = $ua->request( GET $url); };
+	if ($@) {
+		die( 'Fetch failed... ' . $@ );
+	}
+	if ( !$res->is_success ) {
+		die( 'Fetch failed... ' . $url . ' ... ' . $res->status_line . ' ... ' . $res->decoded_content );
+	}
+
+	return $res->decoded_content;
 }
 
 =head1 AUTHOR
