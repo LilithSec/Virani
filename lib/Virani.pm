@@ -10,8 +10,9 @@ use File::Find::IncludesTimeRange;
 use File::Find::Rule;
 use Digest::MD5 qw(md5_hex);
 use File::Spec;
-use IPC::Cmd qw(run can_run);
-use File::Copy "cp";
+use IPC::Cmd   qw(run can_run);
+use File::Copy qw(cp move);
+use Parallel::ForkManager;
 use Sys::Syslog;
 use JSON;
 use Time::Piece;
@@ -121,6 +122,10 @@ Initiates the object.
                  time slot is definitely included.
         Default :: 5
 
+    - workers :: How many PCAPs to filter in parallel when generating. 0 disables
+                 forking and processes them serially in the current process.
+        Default :: 4
+
     - sets :: A hash of hashes of available sets.
         Default :: { default => { path => '/var/log/daemonlogger' } }
 
@@ -133,6 +138,8 @@ For sets, the following keys are usable, of which only path is required.
     - regex :: The timestamp regex to use with this set.
 
     - type :: The default filter type to use with this set.
+
+    - workers :: The worker count to use with this set.
 
     - ts_is_unixtime :: The timestamp is unixtime and does not require additional processing.
 
@@ -152,6 +159,7 @@ sub new {
 		verbose           => 1,
 		type              => 'tcpdump',
 		padding           => 5,
+		workers           => 4,
 		ts_is_unixtime    => 1,
 		pcap_glob         => '*.pcap*',
 		sets              => {
@@ -179,7 +187,7 @@ sub new {
 	my @real_in = (
 		'apikey',            'default_set', 'cache',           'padding',
 		'verbose_to_syslog', 'verbose',     'auth_by_IP_only', 'type',
-		'ts_is_unixtime',    'pcap_glob',   'default_regex'
+		'ts_is_unixtime',    'pcap_glob',   'default_regex',   'workers'
 	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
@@ -306,7 +314,7 @@ sub bpf2tshark {
 		}
 
 		# adding src/dst/host to ether
-		elsif (defined( $previous[0] )
+		elsif ( defined( $previous[0] )
 			&& $previous[0] eq 'ether'
 			&& ( $item eq 'src' || $item eq 'dst' || $item eq 'host' ) )
 		{
@@ -319,7 +327,7 @@ sub bpf2tshark {
 		}
 
 		# adding host/port to src/dst
-		elsif (defined( $previous[0] )
+		elsif ( defined( $previous[0] )
 			&& ( $previous[0] eq 'src' || $previous[0] eq 'dst' )
 			&& ( $item eq 'host' || $item eq 'port' ) )
 		{
@@ -691,6 +699,17 @@ sub _resolve_opts {
 		die( '"' . $opts->{padding} . '" is not a numeric padding value' );
 	}
 
+	# get the workers count and make sure it is sane
+	if ( !defined( $opts->{workers} ) ) {
+		$opts->{workers} = $self->{workers};
+		if ( defined( $self->{sets}{ $opts->{set} }{workers} ) ) {
+			$opts->{workers} = $self->{sets}{ $opts->{set} }{workers};
+		}
+	}
+	if ( $opts->{workers} !~ /^\d+$/ ) {
+		die( '"' . $opts->{workers} . '" is not a numeric workers value' );
+	}
+
 	# clean the filter
 	$opts->{filter} = $self->filter_clean( $opts->{filter} );
 
@@ -762,6 +781,141 @@ sub get_cache_file {
 	return $cache_file;
 } ## end sub get_cache_file
 
+# Internal helper that runs each PCAP in @$to_check through tcpdump/tshark
+# with the filter, writing the results to tmp files, $opts->{workers} at a
+# time. The stats in $to_return are updated and failures recorded in failed.
+# Returns an array ref of the tmp files to merge.
+sub _filter_pcaps {
+	my ( $self, $opts, $to_check, $cache_file, $tshark_filter, $to_return ) = @_;
+
+	my $pm = Parallel::ForkManager->new( $opts->{workers} );
+	my %filter_results;
+	$pm->run_on_finish(
+		sub {
+			my ( $pid, $exit_code, $ident, $exit_signal, $core_dump, $data ) = @_;
+			if ( defined($data) ) {
+				$filter_results{$ident} = $data;
+			} else {
+				$filter_results{$ident} = { success => 0, error => 'child died without returning results' };
+			}
+		}
+	);
+
+	my $pcap_int = 0;
+	foreach my $pcap ( @{$to_check} ) {
+		my $size = ( -s $pcap ) // 0;
+		$to_return->{total_size} += $size;
+		$to_return->{pcap_count}++;
+		$self->verbose( 'info', 'Processing ' . $pcap . ", size=" . $size . " ..." );
+
+		my $tmp_file = $cache_file . '-' . $pcap_int;
+		my $ident    = $pcap_int;
+		$pcap_int++;
+
+		if ( $pm->start($ident) ) {
+			next;
+		}
+		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf );
+		if ( $opts->{type} eq 'tcpdump' ) {
+			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
+				command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts->{filter} ],
+				verbose => 0
+			);
+		} else {
+			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
+				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $tshark_filter ],
+				verbose => 0
+			);
+		}
+		$pm->finish(
+			0,
+			{
+				success  => $success ? 1     : 0,
+				error    => $success ? undef : $error_message,
+				size     => $size,
+				tmp_size => ( -s $tmp_file ) // 0,
+			}
+		);
+	} ## end foreach my $pcap ( @{$to_check} )
+	$pm->wait_all_children;
+
+	# gather the results, in the same order the PCAPs were dispatched
+	my @filtered;
+	$pcap_int = 0;
+	foreach my $pcap ( @{$to_check} ) {
+		my $result   = $filter_results{$pcap_int};
+		my $tmp_file = $cache_file . '-' . $pcap_int;
+		$pcap_int++;
+		if ( $result->{success} ) {
+			$to_return->{success_count}++;
+			$to_return->{success_size} += $result->{size};
+			$to_return->{tmp_size}     += $result->{tmp_size};
+			push( @filtered, $tmp_file );
+		} else {
+			$to_return->{failed}{$pcap} = $result->{error};
+			$to_return->{failed_count}++;
+			$to_return->{failed_size} += $result->{size};
+
+			$self->verbose( 'warning', 'Failed ' . $pcap . " ... " . ( $result->{error} // '' ) );
+
+			unlink $tmp_file;
+		}
+	} ## end foreach my $pcap ( @{$to_check} )
+
+	return \@filtered;
+} ## end sub _filter_pcaps
+
+# Internal helper that merges the passed PCAPs into $cache_file via mergecap,
+# setting merge_error in $to_return if it fails. A single PCAP skips mergecap
+# and is just moved or copied into place. If $inputs_are_tmp is true the
+# inputs are tmp files and are removed afterwards.
+sub _merge_pcaps {
+	my ( $self, $to_return, $cache_file, $merge_inputs, $inputs_are_tmp ) = @_;
+
+	if ( scalar( @{$merge_inputs} ) == 1 && $inputs_are_tmp ) {
+		# a single tmp file does not need merged as tcpdump/tshark already
+		# validated it... originals still go through mergecap so unvalidated
+		# PCAPs, such as one still being written to, are never used directly
+		$self->verbose( 'info', 'Only one PCAP, moving "' . $merge_inputs->[0] . '" to "' . $cache_file . '"' );
+		if ( !move( $merge_inputs->[0], $cache_file ) ) {
+			$to_return->{merge_error} = 'Failed to move "' . $merge_inputs->[0] . '" in place... ' . $!;
+			$self->verbose( 'err', $to_return->{merge_error} );
+		}
+	} else {
+		my $to_merge = [ 'mergecap', '-w', $cache_file, @{$merge_inputs} ];
+
+		$self->verbose( 'info', "Merging PCAPs... " . join( ' ', @{$to_merge} ) );
+
+		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
+			command => $to_merge,
+			verbose => 0
+		);
+		if ($success) {
+			$self->verbose( 'info', "PCAPs merged into " . $cache_file );
+		} else {
+			$to_return->{merge_error} = $error_message;
+
+			# if verbose print different messages if mergecap generated a output file or not when it failed
+			if ( -f $cache_file ) {
+				$self->verbose( 'warning', "PCAPs partially(output file generated) failed " . $error_message );
+			} else {
+				$self->verbose( 'err', "PCAPs merge completely(output file not generated) failed " . $error_message );
+			}
+		} ## end else [ if ($success) ]
+	} ## end else [ if ( scalar( @{$merge_inputs} ) == 1 && $inputs_are_tmp)]
+
+	# remove each tmp file
+	if ($inputs_are_tmp) {
+		foreach my $tmp_file ( @{$merge_inputs} ) {
+			if ( -f $tmp_file ) {
+				unlink($tmp_file);
+			}
+		}
+	}
+
+	return;
+} ## end sub _merge_pcaps
+
 =head2 get_pcap_local
 
 Generates a PCAP locally and returns the path to it.
@@ -775,7 +929,10 @@ Generates a PCAP locally and returns the path to it.
     - padding :: Number of seconds to pad the start and end with.
         - Default :: 5
 
-    - filter :: The BPF or tshark filter to use.
+    - filter :: The BPF or tshark filter to use. If empty, the matching PCAPs
+                are merged directly, skipping per PCAP filtering. Should that
+                fail, such as one of the PCAPs still being written to, it
+                falls back to per PCAP filtering.
         - Default :: ''
 
     - set :: The PCAP set to use. Will use what ever the default is set to if undef or blank.
@@ -795,6 +952,10 @@ Generates a PCAP locally and returns the path to it.
 
     - type :: 'tcpdump' or 'tshark', depending on what one wants the filter todo.
         - Default :: tcpdump
+
+    - workers :: How many PCAPs to filter in parallel. 0 disables forking and
+                 processes them serially in the current process.
+        - Default :: 4
 
 The return is a hash reference that includes the following keys.
 
@@ -913,7 +1074,10 @@ sub get_pcap_local {
 		}
 		$self->verbose( 'info', $cache_message );
 		if ( defined( $opts{file} ) && $opts{file} ne $cache_file ) {
-			cp( $cache_file, $opts{file} );
+			# try hardlinking as they will often be on the same filesystem, otherwise copy it
+			if ( !link( $cache_file, $opts{file} ) ) {
+				cp( $cache_file, $opts{file} );
+			}
 		}
 		my $to_return;
 		eval {
@@ -996,9 +1160,6 @@ sub get_pcap_local {
 		ts_is_unixtime => $ts_is_unixtime,
 	};
 
-	# used for tracking the files to cleanup
-	my @tmp_files;
-
 	# puts together the tshark filter if needed
 	my $tshark_filter = $opts{filter};
 	if ( $opts{type} eq 'bpf2tshark' ) {
@@ -1007,84 +1168,57 @@ sub get_pcap_local {
 		$self->verbose( 'info', 'Translated Filter ' . $tshark_filter );
 	}
 
-	# the merge command
-	my $to_merge = [ 'mergecap', '-w', $cache_file ];
-	foreach my $pcap ( @{$to_check} ) {
-
-		my $size = ( -s $pcap ) // 0;
-		$to_return->{total_size} += $size;
-
-		$self->verbose( 'info', 'Processing ' . $pcap . ", size=" . $size . " ..." );
-
-		my $tmp_file = $cache_file . '-' . $to_return->{pcap_count};
-
-		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf );
-		if ( $opts{type} eq 'tcpdump' ) {
-			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-				command => [ 'tcpdump', '-r', $pcap, '-w', $tmp_file, $opts{filter} ],
-				verbose => 0
-			);
-		} else {
-			( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-				command => [ 'tshark', '-r', $pcap, '-w', $tmp_file, $tshark_filter ],
-				verbose => 0
-			);
-		}
-		if ($success) {
-			$to_return->{success_count}++;
+	# generate the filtered PCAPs and merge them
+	if ( $opts{filter} eq '' ) {
+		# a empty filter matches everything, so try merging the PCAPs
+		# directly, skipping the per PCAP filtering
+		$self->verbose( 'info', 'Empty filter... attempting to merge the PCAPs directly' );
+		my @merge_inputs;
+		foreach my $pcap ( @{$to_check} ) {
+			my $size = ( -s $pcap ) // 0;
+			$to_return->{total_size}   += $size;
 			$to_return->{success_size} += $size;
-			push( @{$to_merge}, $tmp_file );
-			push( @tmp_files,   $tmp_file );
-
-			$to_return->{tmp_size} += ( -s $tmp_file ) // 0;
-
-		} else {
-			$to_return->{failed}{$pcap} = $error_message;
-			$to_return->{failed_count}++;
-			$to_return->{failed_size} += $size;
-
-			$self->verbose( 'warning', 'Failed ' . $pcap . " ... " . $error_message );
-
-			unlink $tmp_file;
+			$to_return->{success_count}++;
+			$to_return->{pcap_count}++;
+			push( @merge_inputs, $pcap );
 		}
+		if ( $to_return->{success_count} > 0 ) {
+			$self->_merge_pcaps( $to_return, $cache_file, \@merge_inputs, 0 );
 
-		$to_return->{pcap_count}++;
-	} ## end foreach my $pcap ( @{$to_check} )
-
-	# only try merging if we had at least one success
-	if ( $to_return->{success_count} > 0 ) {
-
-		$self->verbose( 'info', "Merging PCAPs... " . join( ' ', @{$to_merge} ) );
-
-		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
-			command => $to_merge,
-			verbose => 0
-		);
-		if ($success) {
-			$self->verbose( 'info', "PCAPs merged into " . $cache_file );
-		} else {
-			$to_return->{merge_error} = $error_message;
-
-			# if verbose print different messages if mergecap generated a output file or not when it failed
-			if ( -f $cache_file ) {
-				$self->verbose( 'warning', "PCAPs partially(output file generated) failed " . $error_message );
-			} else {
-				$self->verbose( 'err', "PCAPs merge completely(output file not generated) failed " . $error_message );
-			}
-		}
-
-		# remove each tmp file
-		foreach my $tmp_file (@tmp_files) {
-			unlink($tmp_file);
-		}
-
-		# don't bother checking size if the file was not generated
-		if ( -f $cache_file ) {
-			$to_return->{final_size} = ( -s $cache_file ) // 0;
-		}
-
+			# if the direct merge failed, such as one of the PCAPs still being
+			# written to, redo it via per PCAP filtering, which handles
+			# failures of single PCAPs gracefully
+			if ( defined( $to_return->{merge_error} ) ) {
+				$self->verbose( 'warning', 'Direct merge failed... falling back to per PCAP filtering' );
+				if ( -f $cache_file ) {
+					unlink($cache_file);
+				}
+				foreach my $key (qw(pcap_count success_count failed_count total_size success_size failed_size tmp_size))
+				{
+					$to_return->{$key} = 0;
+				}
+				$to_return->{failed}      = {};
+				$to_return->{merge_error} = undef;
+				my $filtered = $self->_filter_pcaps( \%opts, $to_check, $cache_file, $tshark_filter, $to_return );
+				if ( $to_return->{success_count} > 0 ) {
+					$self->_merge_pcaps( $to_return, $cache_file, $filtered, 1 );
+				}
+			} ## end if ( defined( $to_return->{merge_error} ) )
+		} ## end if ( $to_return->{success_count} > 0 )
 	} else {
+		my $filtered = $self->_filter_pcaps( \%opts, $to_check, $cache_file, $tshark_filter, $to_return );
+		if ( $to_return->{success_count} > 0 ) {
+			$self->_merge_pcaps( $to_return, $cache_file, $filtered, 1 );
+		}
+	}
+
+	if ( $to_return->{success_count} < 1 ) {
 		$self->verbose( 'err', "No PCAPs to merge" );
+	}
+
+	# don't bother checking size if the file was not generated
+	if ( -f $cache_file ) {
+		$to_return->{final_size} = ( -s $cache_file ) // 0;
 	}
 
 	# if the output file was never generated, note that via setting path to undef
@@ -1118,7 +1252,10 @@ sub get_pcap_local {
 	# if the file and cache file are the same, then the cache dir is not being used, so no need to copy it
 	if ( defined( $to_return->{path} ) && defined( $opts{file} ) && $cache_file ne $opts{file} ) {
 		$self->verbose( 'info', 'Copying "' . $cache_file . '" to "' . $opts{file} . '"' );
-		cp( $cache_file, $opts{file} );
+		# try hardlinking as they will often be on the same filesystem, otherwise copy it
+		if ( !link( $cache_file, $opts{file} ) ) {
+			cp( $cache_file, $opts{file} );
+		}
 	}
 
 	$to_return->{using_cache} = 0;

@@ -10,6 +10,15 @@ Revision history for Virani
          error if not
        - add merge_error key to the get_pcap_local metadata, containing the
          mergecap error message if merging failed
+       - filter PCAPs in parallel via Parallel::ForkManager, configurable
+         via the new workers config var, settable globally or per set and
+         defaulting to 4, with 0 meaning serially in process
+       - a empty filter now skips per PCAP filtering and merges the matched
+         PCAPs directly, falling back to per PCAP filtering if the direct
+         merge fails, such as when one is still being written to
+       - skip mergecap when there is only a single PCAP to merge, moving or
+         copying it instead
+       - try hardlinking before copying when placing the output file
        - SECURITY: fix default allowed_subnets entry of '192.168.0.0/', which
          parsed as a /0 and matched any IP, to '192.168.0.0/16'
        - bpf2tshark: fix handling of '(', which was never matched, fix ether
