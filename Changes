@@ -1,6 +1,17 @@
 Revision history for Virani
 
 ?.?.?  ?/?
+       - add a PCAP hosts cache... Virani->update_pcap_hosts indexes what
+         hosts are in each PCAP of a set via tshark with
+         '-n -q -z endpoints,ipv4 -z endpoints,ipv6', saving them as newline
+         delimited lists under $cache/pcap_hosts/$set/ named after the PCAP's
+         path relative to the set path, with entries invalidated via mtime
+         comparison against the PCAP, PCAPs modified less than
+         pcap_hosts_min_age seconds ago (default 120, settable globally or
+         per set) skipped to avoid indexing PCAPs still being written to,
+         and entries for removed PCAPs pruned... readable per PCAP via
+         Virani->read_pcap_hosts and updatable via virani
+         --update-pcap-hosts, intended for cron
        - add Virani->get_sets for getting a list of configured sets, exposed
          via mojo-virani as the get_sets=1 param and remotely fetchable via
          Virani::Client->get_sets or virani --list-sets

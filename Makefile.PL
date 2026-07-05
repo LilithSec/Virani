@@ -32,6 +32,7 @@ my %WriteMakefileArgs = (
 		'File::Spec'                    => '0',
 		'IPC::Cmd'                      => '0',
 		'File::Copy'                    => '0',
+		'File::Path'                    => '0',
 		'Parallel::ForkManager'         => '2.02',
 		'Sys::Syslog'                   => '0',
 		'LWP::UserAgent'                => '0',

@@ -30,6 +30,8 @@ virani B<--cached> <id> [B<-w> <output>] [B<--meta>] [B<--config> <file>]
 
 virani B<-r> <remote> B<--cached> <id> [B<-w> <output>] [B<--meta>] [B<-a> <apikey>] [B<-k>]
 
+virani B<--update-pcap-hosts> [B<--set> <set>] [B<--config> <file>]
+
 =head1 DESCRIPTION
 
 =head1 LOCAL
@@ -125,6 +127,17 @@ May be used either locally or with B<-r>.
 
 With B<--cached>, only print the metadata JSON, skipping the PCAP.
 
+=head2 --update-pcap-hosts
+
+Update the PCAP hosts cache for a set, indexing what hosts are in each
+PCAP via tshark. B<--set> may be used to choose the set, otherwise the
+default set is used. A JSON summary of what was done is printed once
+done. B<-q> silences the progress narration, leaving just the JSON.
+
+Intended for being cronned on the box holding the PCAPs.
+
+Local only. May not be used with B<-r>.
+
 =head2 --config <config>
 
 Config file to use.
@@ -213,6 +226,10 @@ sub help {
 
 --meta            With --cached, only print the metadata JSON.
 
+--update-pcap-hosts
+                  Update the PCAP hosts cache for a set. May be
+                  used with --set. Local only.
+
 --config <config> Config file to use.
                   Default :: /usr/local/etc/virani.toml
 
@@ -259,32 +276,34 @@ my $buffer;
 my $list_sets   = 0;
 my $list_cached = 0;
 my $cached_id;
-my $meta_only = 0;
+my $meta_only         = 0;
+my $update_pcap_hosts = 0;
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
-	'version'     => \$version,
-	'v'           => \$version,
-	'help'        => \$help,
-	'h'           => \$help,
-	'f=s'         => \$filter,
-	's=s'         => \$start,
-	'e=s'         => \$end,
-	'w=s'         => \$write,
-	'r=s'         => \$remote,
-	'set=s'       => \$set,
-	'nc'          => \$no_cache,
-	'q'           => \$quiet,
-	'config=s'    => \$config_virani,
-	'a=s'         => \$apikey,
-	't=s'         => \$type,
-	'k'           => \$verify_hostname_flag,
-	'timeout=s'   => \$timeout,
-	'buffer=s'    => \$buffer,
-	'list-sets'   => \$list_sets,
-	'list-cached' => \$list_cached,
-	'cached=s'    => \$cached_id,
-	'meta'        => \$meta_only,
+	'version'           => \$version,
+	'v'                 => \$version,
+	'help'              => \$help,
+	'h'                 => \$help,
+	'f=s'               => \$filter,
+	's=s'               => \$start,
+	'e=s'               => \$end,
+	'w=s'               => \$write,
+	'r=s'               => \$remote,
+	'set=s'             => \$set,
+	'nc'                => \$no_cache,
+	'q'                 => \$quiet,
+	'config=s'          => \$config_virani,
+	'a=s'               => \$apikey,
+	't=s'               => \$type,
+	'k'                 => \$verify_hostname_flag,
+	'timeout=s'         => \$timeout,
+	'buffer=s'          => \$buffer,
+	'list-sets'         => \$list_sets,
+	'list-cached'       => \$list_cached,
+	'cached=s'          => \$cached_id,
+	'meta'              => \$meta_only,
+	'update-pcap-hosts' => \$update_pcap_hosts,
 );
 
 if ($help) {
@@ -335,7 +354,7 @@ if ( -f $filter ) {
 } ## end if ( -f $filter )
 
 # actions that don't involve a search, so don't require -s and -e
-my $no_search = $list_sets || $list_cached || defined($cached_id);
+my $no_search = $list_sets || $list_cached || defined($cached_id) || $update_pcap_hosts;
 
 if ( !defined($start) && !$no_search ) {
 	die('No start time set via -s');
@@ -415,6 +434,13 @@ if ( !$remote ) {
 		exit 0;
 	}
 
+	if ($update_pcap_hosts) {
+		my $returned = $virani->update_pcap_hosts( set => $set );
+		my $json     = JSON->new->allow_nonref->pretty->canonical(1);
+		print $json->encode($returned);
+		exit 0;
+	}
+
 	if ( defined($cached_id) ) {
 		if ($meta_only) {
 			# narration would corrupt the JSON being printed to stdout
@@ -447,6 +473,10 @@ if ( !$remote ) {
 
 	exit 0;
 } else {
+	if ($update_pcap_hosts) {
+		die('--update-pcap-hosts is local only and may not be used with -r');
+	}
+
 	# check to see if remote is a config file
 	my $config_file;
 	if ( -f $remote ) {

@@ -12,6 +12,7 @@ use Digest::MD5 qw(md5_hex);
 use File::Spec;
 use IPC::Cmd   qw(run can_run);
 use File::Copy qw(cp move);
+use File::Path qw(make_path);
 use Parallel::ForkManager;
 use Sys::Syslog;
 use JSON;
@@ -112,6 +113,12 @@ Initiates the object.
     - pcap_glob :: The glob to use for matching files.
         Default :: *.pcap*
 
+    - pcap_hosts_min_age :: How many seconds a PCAP must have gone unmodified before
+                            update_pcap_hosts will index it. This keeps PCAPs still
+                            being written to from being indexed with a partial host
+                            list.
+        Default :: 120
+
     - ts_is_unixtime :: The timestamp is unixtime and does not require additional processing.
         Default :: 1
 
@@ -149,26 +156,29 @@ For sets, the following keys are usable, of which only path is required.
 
     - ts_is_unixtime :: The timestamp is unixtime and does not require additional processing.
 
+    - pcap_hosts_min_age :: The pcap_hosts_min_age value for this set.
+
 =cut
 
 sub new {
 	my ( $class, %opts ) = @_;
 
 	my $self = {
-		allowed_subnets   => [ '192.168.0.0/16', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
-		apikey            => undef,
-		auth_by_IP_only   => 1,
-		default_set       => 'default',
-		cache             => '/var/cache/virani',
-		default_regex     => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
-		verbose_to_syslog => 0,
-		verbose           => 1,
-		type              => 'tcpdump',
-		padding           => 5,
-		workers           => 4,
-		ts_is_unixtime    => 1,
-		pcap_glob         => '*.pcap*',
-		sets              => {
+		allowed_subnets    => [ '192.168.0.0/16', '127.0.0.1/8', '::1/127', '172.16.0.0/12' ],
+		apikey             => undef,
+		auth_by_IP_only    => 1,
+		default_set        => 'default',
+		cache              => '/var/cache/virani',
+		default_regex      => '(?<timestamp>\\d\\d\\d\\d\\d\\d+)(\\.pcap|(?<subsec>\\.\\d+)\\.pcap)$',
+		verbose_to_syslog  => 0,
+		verbose            => 1,
+		type               => 'tcpdump',
+		padding            => 5,
+		workers            => 4,
+		ts_is_unixtime     => 1,
+		pcap_glob          => '*.pcap*',
+		pcap_hosts_min_age => 120,
+		sets               => {
 			default => {
 				path => '/var/log/daemonlogger',
 			}
@@ -193,7 +203,8 @@ sub new {
 	my @real_in = (
 		'apikey',            'default_set', 'cache',           'padding',
 		'verbose_to_syslog', 'verbose',     'auth_by_IP_only', 'type',
-		'ts_is_unixtime',    'pcap_glob',   'default_regex',   'workers'
+		'ts_is_unixtime',    'pcap_glob',   'default_regex',   'workers',
+		'pcap_hosts_min_age'
 	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
@@ -616,7 +627,8 @@ sub get_default_set {
 
 Returns a hash ref of the configured sets. The keys are the set
 names and the values are hash refs of the non-path settings for
-that set, any of type, padding, regex, ts_is_unixtime, or pcap_glob.
+that set, any of type, padding, regex, ts_is_unixtime, pcap_glob,
+or pcap_hosts_min_age.
 
     my $sets=$virani->get_sets;
 
@@ -628,7 +640,7 @@ sub get_sets {
 	my $sets = {};
 	foreach my $set_name ( keys( %{ $self->{sets} } ) ) {
 		$sets->{$set_name} = {};
-		foreach my $key ( 'type', 'padding', 'regex', 'ts_is_unixtime', 'pcap_glob' ) {
+		foreach my $key ( 'type', 'padding', 'regex', 'ts_is_unixtime', 'pcap_glob', 'pcap_hosts_min_age' ) {
 			if ( defined( $self->{sets}{$set_name}{$key} ) ) {
 				$sets->{$set_name}{$key} = $self->{sets}{$set_name}{$key};
 			}
@@ -1487,6 +1499,407 @@ sub get_set_path {
 
 	return $self->{sets}{$set}{path};
 } ## end sub get_set_path
+
+# Internal helper that parses the output of
+# 'tshark -n -q -z endpoints,ipv4 -z endpoints,ipv6' and returns a sorted,
+# deduped array ref of the addresses found in the IPv4/IPv6 endpoint tables.
+sub _parse_tshark_endpoints {
+	my $self = $_[0];
+	my $raw  = $_[1];
+
+	if ( !defined($raw) ) {
+		return [];
+	}
+
+	my %hosts;
+	my $in_section = 0;
+	foreach my $line ( split( /\n/, $raw ) ) {
+		if ( $line =~ /^IPv[46] Endpoints/ ) {
+			$in_section = 1;
+		} elsif ($in_section) {
+			# the === line ends the current endpoints table
+			if ( $line =~ /^=+/ ) {
+				$in_section = 0;
+			} elsif ( $line !~ /^Filter\:/ && $line !~ /\|/ && $line =~ /^(\S+)/ ) {
+				my $host = $1;
+
+				# only accept things that look like a IPv4 or IPv6 address,
+				# tshark is invoked with -n so hosts will never be names
+				if ( $host =~ /^\d+\.\d+\.\d+\.\d+$/ || ( $host =~ /^[0-9a-fA-F\:\.]+$/ && $host =~ /\:/ ) ) {
+					$hosts{$host} = 1;
+				}
+			}
+		} ## end elsif ($in_section)
+	} ## end foreach my $line ( split( /\n/, $raw ) )
+
+	return [ sort( keys(%hosts) ) ];
+} ## end sub _parse_tshark_endpoints
+
+=head2 update_pcap_hosts
+
+Updates the PCAP hosts cache for a set.
+
+Each PCAP in the set is ran through tshark with
+'-n -q -z endpoints,ipv4 -z endpoints,ipv6' and the addresses found are
+saved, one per line, to a file under '$cache/pcap_hosts/$set/' named after
+the PCAP's path relative to the set path.
+
+A entry is considered current if its mtime is equal to or newer than the
+mtime of the PCAP in question, so a PCAP that has changed since it was
+indexed will be reindexed. PCAPs with a mtime newer than min_age seconds
+ago are skipped, keeping PCAPs still being written to from being indexed
+with a partial host list. Entries whose PCAP no longer exists are pruned.
+
+    - set :: The PCAP set to update the hosts cache for. Will use what ever
+             the default is set to if undef or blank.
+        - Default :: $virani->get_default_set
+
+    - workers :: How many PCAPs to index in parallel. 0 disables forking and
+                 processes them serially in the current process.
+        - Default :: 4
+
+    - min_age :: How many seconds a PCAP must have gone unmodified before it
+                 will be indexed.
+        - Default :: 120
+
+The return is a hash reference that includes the following keys.
+
+    - set :: The set the hosts cache was updated for.
+
+    - hosts_dir :: The directory the host lists are stored under.
+
+    - pcap_count :: How many PCAPs were found in the set.
+
+    - indexed :: How many PCAPs were newly indexed or reindexed.
+
+    - fresh :: How many PCAPs already had a current entry.
+
+    - too_new :: How many PCAPs were skipped for having been modified less
+                 than min_age seconds ago.
+
+    - pruned :: How many entries were removed as their PCAP is gone.
+
+    - failed :: A hash of PCAPs that failed to index. PCAP path as key and
+                the value being the reason.
+
+    - failed_count :: A count of failed PCAPs.
+
+    my $stats=$virani->update_pcap_hosts( set=>'default' );
+    print 'Indexed: '.$stats->{indexed}."\n";
+
+=cut
+
+sub update_pcap_hosts {
+	my ( $self, %opts ) = @_;
+
+	# if set is undef or blank, use the default
+	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
+		$opts{set} = $self->get_default_set;
+	}
+
+	# make sure the set exists and the path for it is usable
+	my $set_path = $self->get_set_path( $opts{set} );
+	if ( !defined($set_path) ) {
+		die( 'The set "' . $opts{set} . '" does not either exist or the path value for it is undef' );
+	} elsif ( !-d $set_path ) {
+		die( 'The path for set "' . $opts{set} . '", "' . $set_path . '" does not exist or is not a directory' );
+	}
+
+	# get the workers count and make sure it is sane
+	if ( !defined( $opts{workers} ) ) {
+		$opts{workers} = $self->{workers};
+		if ( defined( $self->{sets}{ $opts{set} }{workers} ) ) {
+			$opts{workers} = $self->{sets}{ $opts{set} }{workers};
+		}
+	}
+	if ( $opts{workers} !~ /^\d+$/ ) {
+		die( '"' . $opts{workers} . '" is not a numeric workers value' );
+	}
+
+	# get the min age and make sure it is sane
+	if ( !defined( $opts{min_age} ) ) {
+		$opts{min_age} = $self->{pcap_hosts_min_age};
+		if ( defined( $self->{sets}{ $opts{set} }{pcap_hosts_min_age} ) ) {
+			$opts{min_age} = $self->{sets}{ $opts{set} }{pcap_hosts_min_age};
+		}
+	}
+	if ( $opts{min_age} !~ /^\d+$/ ) {
+		die( '"' . $opts{min_age} . '" is not a numeric min_age value' );
+	}
+
+	# figure out what to use for $pcap_glob
+	my $pcap_glob;
+	if ( defined( $self->{sets}{ $opts{set} }{pcap_glob} ) ) {
+		$pcap_glob = $self->{sets}{ $opts{set} }{pcap_glob};
+	} else {
+		$pcap_glob = $self->{pcap_glob};
+	}
+
+	if ( !can_run('tshark') ) {
+		die('The command "tshark" is required for indexing PCAP hosts, but was not found in the path');
+	}
+
+	# make sure the cache is usable
+	if ( !-d $self->{cache} ) {
+		die( 'Cache dir,"' . $self->{cache} . '", does not exist or is not a dir' );
+	} elsif ( !-w $self->{cache} ) {
+		die( 'Cache dir,"' . $self->{cache} . '", is not writable' );
+	}
+
+	my $hosts_dir = $self->{cache} . '/pcap_hosts/' . $opts{set};
+	if ( !-d $hosts_dir ) {
+		eval { make_path($hosts_dir); };
+		if ( $@ || !-d $hosts_dir ) {
+			die( 'Failed to create the PCAP hosts dir,"' . $hosts_dir . '"...' . ( $@ // '' ) );
+		}
+	}
+
+	$self->verbose( 'info', 'Updating the PCAP hosts cache for set "' . $opts{set} . '" at "' . $hosts_dir . '"' );
+	$self->verbose( 'info', 'PCAP Glob: ' . $pcap_glob );
+	$self->verbose( 'info', 'Min Age: ' . $opts{min_age} );
+
+	my $to_return = {
+		set          => $opts{set},
+		hosts_dir    => $hosts_dir,
+		pcap_count   => 0,
+		indexed      => 0,
+		fresh        => 0,
+		too_new      => 0,
+		pruned       => 0,
+		failed       => {},
+		failed_count => 0,
+	};
+
+	# prune entries who's PCAP is gone, keeping rotation from growing this
+	# forever... also cleans up any tmp files left by a interrupted run
+	my @existing = File::Find::Rule->file()->in($hosts_dir);
+	foreach my $entry (@existing) {
+		my $rel = File::Spec->abs2rel( $entry, $hosts_dir );
+		if ( !-f $set_path . '/' . $rel ) {
+			$self->verbose( 'info', 'Pruning "' . $entry . '" as the PCAP for it is gone' );
+			if ( unlink($entry) ) {
+				$to_return->{pruned}++;
+			} else {
+				$self->verbose( 'warning', 'Failed to prune "' . $entry . '"... ' . $! );
+			}
+		}
+	} ## end foreach my $entry (@existing)
+
+	# get the pcaps and figure out which need indexed
+	my @pcaps = File::Find::Rule->file()->name($pcap_glob)->in($set_path);
+	$to_return->{pcap_count} = scalar(@pcaps);
+
+	my $now = time;
+	my @to_index;
+	foreach my $pcap (@pcaps) {
+		my $pcap_mtime = ( stat($pcap) )[9];
+
+		# rotation may have removed it between the find and now
+		if ( !defined($pcap_mtime) ) {
+			next;
+		}
+
+		# too recently modified, likely still being written to
+		if ( ( $now - $pcap_mtime ) < $opts{min_age} ) {
+			$self->verbose( 'info', 'Skipping ' . $pcap . ' as it is too new' );
+			$to_return->{too_new}++;
+			next;
+		}
+
+		my $rel        = File::Spec->abs2rel( $pcap, $set_path );
+		my $entry_path = $hosts_dir . '/' . $rel;
+
+		# a entry as new or newer than the PCAP is current
+		if ( -f $entry_path && ( stat($entry_path) )[9] >= $pcap_mtime ) {
+			$to_return->{fresh}++;
+			next;
+		}
+
+		# make sure the dir for the entry exists... done here as doing it
+		# in the children would be a race between them
+		my ( $entry_volume, $entry_dirs, $entry_name ) = File::Spec->splitpath($entry_path);
+		if ( $entry_dirs ne '' && !-d $entry_dirs ) {
+			eval { make_path($entry_dirs); };
+			if ( $@ || !-d $entry_dirs ) {
+				$to_return->{failed}{$pcap} = 'Failed to create the dir "' . $entry_dirs . '"...' . ( $@ // '' );
+				$to_return->{failed_count}++;
+				$self->verbose( 'warning', 'Failed ' . $pcap . ' ... ' . $to_return->{failed}{$pcap} );
+				next;
+			}
+		}
+
+		push( @to_index, { pcap => $pcap, entry_path => $entry_path } );
+	} ## end foreach my $pcap (@pcaps)
+
+	my $pm = Parallel::ForkManager->new( $opts{workers} );
+	my %index_results;
+	$pm->run_on_finish(
+		sub {
+			my ( $pid, $exit_code, $ident, $exit_signal, $core_dump, $data ) = @_;
+			if ( defined($data) ) {
+				$index_results{$ident} = $data;
+			} else {
+				$index_results{$ident} = { success => 0, error => 'child died without returning results' };
+			}
+		}
+	);
+
+	my $pcap_int = 0;
+	foreach my $item (@to_index) {
+		my $ident = $pcap_int;
+		$pcap_int++;
+
+		$self->verbose( 'info', 'Indexing ' . $item->{pcap} . ' ...' );
+
+		if ( $pm->start($ident) ) {
+			next;
+		}
+		my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run(
+			command =>
+				[ 'tshark', '-r', $item->{pcap}, '-n', '-q', '-z', 'endpoints,ipv4', '-z', 'endpoints,ipv6' ],
+			verbose => 0
+		);
+		my $error;
+		if ($success) {
+			my $hosts = $self->_parse_tshark_endpoints( join( '', @{$stdout_buf} ) );
+
+			# write to a tmp file and move it into place so a reader
+			# never sees a partially written host list
+			my $tmp_file = $item->{entry_path} . '.tmp' . $$;
+			eval {
+				write_file( $tmp_file, @{$hosts} ? join( "\n", @{$hosts} ) . "\n" : '' );
+				if ( !move( $tmp_file, $item->{entry_path} ) ) {
+					die($!);
+				}
+			};
+			if ($@) {
+				$error = 'Failed to write "' . $item->{entry_path} . '"... ' . $@;
+				if ( -f $tmp_file ) {
+					unlink($tmp_file);
+				}
+			}
+		} else {
+			$error = $error_message;
+		}
+		$pm->finish(
+			0,
+			{
+				success => defined($error) ? 0      : 1,
+				error   => defined($error) ? $error : undef,
+			}
+		);
+	} ## end foreach my $item (@to_index)
+	$pm->wait_all_children;
+
+	# gather the results, in the same order the PCAPs were dispatched
+	$pcap_int = 0;
+	foreach my $item (@to_index) {
+		my $result = $index_results{$pcap_int};
+		$pcap_int++;
+		if ( $result->{success} ) {
+			$to_return->{indexed}++;
+		} else {
+			$to_return->{failed}{ $item->{pcap} } = $result->{error};
+			$to_return->{failed_count}++;
+			$self->verbose( 'warning', 'Failed ' . $item->{pcap} . ' ... ' . ( $result->{error} // '' ) );
+		}
+	} ## end foreach my $item (@to_index)
+
+	$self->verbose( 'info',
+			  'PCAP hosts cache updated for set "'
+			. $opts{set}
+			. '"... pcap_count='
+			. $to_return->{pcap_count}
+			. ' indexed='
+			. $to_return->{indexed}
+			. ' fresh='
+			. $to_return->{fresh}
+			. ' too_new='
+			. $to_return->{too_new}
+			. ' pruned='
+			. $to_return->{pruned}
+			. ' failed_count='
+			. $to_return->{failed_count} );
+
+	return $to_return;
+} ## end sub update_pcap_hosts
+
+=head2 read_pcap_hosts
+
+Reads the cached host list for a single PCAP, as generated via
+update_pcap_hosts.
+
+    - pcap :: The PCAP to fetch the host list for. May be either a absolute
+              path under the set path or a path relative to the set path.
+              Required.
+
+    - set :: The PCAP set the PCAP belongs to. Will use what ever the default
+             is set to if undef or blank.
+        - Default :: $virani->get_default_set
+
+The return is a array ref of the hosts in the PCAP. undef is returned if
+there is no entry for the PCAP, the entry is stale (the PCAP has been
+modified since it was indexed), or the PCAP no longer exists, in which case
+the caller should not make any assumptions about what hosts are in the PCAP.
+
+Will die if pcap is undef, the set does not exist, or the PCAP is not under
+the set path.
+
+    my $hosts=$virani->read_pcap_hosts( pcap=>$pcap );
+    if ( defined( $hosts ) ){
+        print join( "\n", @{ $hosts } )."\n";
+    }
+
+=cut
+
+sub read_pcap_hosts {
+	my ( $self, %opts ) = @_;
+
+	if ( !defined( $opts{pcap} ) ) {
+		die('$opts{pcap} not defined');
+	}
+
+	# if set is undef or blank, use the default
+	if ( !defined( $opts{set} ) || $opts{set} eq '' ) {
+		$opts{set} = $self->get_default_set;
+	}
+
+	my $set_path = $self->get_set_path( $opts{set} );
+	if ( !defined($set_path) ) {
+		die( 'The set "' . $opts{set} . '" does not either exist or the path value for it is undef' );
+	}
+
+	my $rel = $opts{pcap};
+	if ( File::Spec->file_name_is_absolute($rel) ) {
+		$rel = File::Spec->abs2rel( $rel, $set_path );
+	}
+
+	# make sure the relative path can not escape the set path
+	if ( $rel =~ /(?:^|\/)\.\.(?:\/|$)/ ) {
+		die( 'The PCAP "' . $opts{pcap} . '" is not under the set path "' . $set_path . '"' );
+	}
+
+	my $entry_path = $self->{cache} . '/pcap_hosts/' . $opts{set} . '/' . $rel;
+	if ( !-f $entry_path ) {
+		return undef;
+	}
+
+	# stale if the PCAP is gone or has been modified since being indexed
+	my $pcap_mtime = ( stat( $set_path . '/' . $rel ) )[9];
+	if ( !defined($pcap_mtime) || ( stat($entry_path) )[9] < $pcap_mtime ) {
+		return undef;
+	}
+
+	my $raw;
+	eval { $raw = read_file($entry_path); };
+	if ( $@ || !defined($raw) ) {
+		return undef;
+	}
+
+	my @hosts = grep( !/^\s*$/, split( /\n/, $raw ) );
+
+	return \@hosts;
+} ## end sub read_pcap_hosts
 
 =head2 set_verbose
 
