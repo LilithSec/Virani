@@ -35,3 +35,4 @@ inc/
 /*.zip
 bin/mojo-virani
 bin/virani
+bin/.exists
