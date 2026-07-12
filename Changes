@@ -1,6 +1,12 @@
 Revision history for Virani
 
 ?.?.?  ?/?
+       - Virani::Client now percent encodes every value it places in the query
+         string when contacting mojo-virani, so a filter, set, type, or cache
+         ID containing reserved characters (& # = + %, spaces, IPv6 ':') can no
+         longer corrupt the request or inject query parameters... previously
+         only spaces in the filter were encoded... this is wire compatible with
+         existing mojo-virani servers, which decode the values via $c->param
        - add a PCAP hosts cache... Virani->update_pcap_hosts indexes what
          hosts are in each PCAP of a set via tshark with
          '-n -q -z endpoints,ipv4 -z endpoints,ipv6', saving them as newline
@@ -15,6 +21,17 @@ Revision history for Virani
        - add Virani->get_sets for getting a list of configured sets, exposed
          via mojo-virani as the get_sets=1 param and remotely fetchable via
          Virani::Client->get_sets or virani --list-sets
+       - get_pcap_local can now use the PCAP hosts index to skip PCAPs that
+         can not match a host filter before the per PCAP filtering... when the
+         new host_pruning config var is enabled (globally or per set, default
+         off) and the filter requires one or more IP hosts, the filter is
+         reduced to OR-of-AND-groups of hosts and a time matched PCAP is kept
+         only when its indexed host list fully contains at least one group, so
+         'host A and host B' drops a PCAP that indexes A but not B... the host
+         requirements are derived from the BPF for the tcpdump and bpf2tshark
+         types and from the native display filter for the tshark type... PCAPs
+         lacking a current index entry are always kept... stats are recorded
+         under the host_pruning key of the get_pcap_local metadata
        - misc. minor cleanups
        - get_pcap_local now checks that tcpdump/tshark and mergecap can be
          found in the path before generating PCAPs and dies with a clear

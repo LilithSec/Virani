@@ -119,6 +119,22 @@ Initiates the object.
                             list.
         Default :: 120
 
+    - host_pruning :: Use the pcap_hosts index to skip PCAPs that can not possibly
+                      match a host filter before the per PCAP filtering in
+                      get_pcap_local. When enabled, and the filter requires one or
+                      more IP hosts, the filter is reduced to OR-of-AND-groups of
+                      hosts and a PCAP is kept only when its indexed host list fully
+                      contains at least one group. This means 'host A and host B'
+                      skips a PCAP that indexes A but not B, not just one that indexes
+                      neither. The host requirements are derived from the BPF for the
+                      tcpdump and bpf2tshark types, and from the native display filter
+                      for the tshark type. PCAPs with no current index entry are always
+                      kept, so an unindexed set simply falls back to full filtering.
+                      Only anchors on IP hosts, so it is unsound for filters relying on
+                      ARP or tunneled inner addresses, which is why it defaults to off.
+                      See update_pcap_hosts.
+        Default :: 0
+
     - ts_is_unixtime :: The timestamp is unixtime and does not require additional processing.
         Default :: 1
 
@@ -158,6 +174,8 @@ For sets, the following keys are usable, of which only path is required.
 
     - pcap_hosts_min_age :: The pcap_hosts_min_age value for this set.
 
+    - host_pruning :: The host_pruning value for this set.
+
 =cut
 
 sub new {
@@ -178,6 +196,7 @@ sub new {
 		ts_is_unixtime     => 1,
 		pcap_glob          => '*.pcap*',
 		pcap_hosts_min_age => 120,
+		host_pruning       => 0,
 		sets               => {
 			default => {
 				path => '/var/log/daemonlogger',
@@ -204,7 +223,7 @@ sub new {
 		'apikey',            'default_set', 'cache',           'padding',
 		'verbose_to_syslog', 'verbose',     'auth_by_IP_only', 'type',
 		'ts_is_unixtime',    'pcap_glob',   'default_regex',   'workers',
-		'pcap_hosts_min_age'
+		'pcap_hosts_min_age', 'host_pruning'
 	);
 	for my $key (@real_in) {
 		if ( defined( $opts{$key} ) ) {
@@ -1329,6 +1348,83 @@ sub get_pcap_local {
 		ts_is_unixtime => $ts_is_unixtime,
 	);
 
+	# Narrow further using the pcap_hosts index when the filter requires
+	# specific IP hosts. The filter is reduced to OR-of-AND-groups of hosts,
+	# and a PCAP is kept only when its indexed host list fully contains at
+	# least one group. If every group has a host missing from the index the
+	# filter can not match anything in the PCAP, so it is skipped before the
+	# expensive per PCAP filtering below. The host requirements are derived
+	# from the BPF (tcpdump/bpf2tshark) or the native tshark display filter
+	# depending on the type. Only done when host_pruning is enabled for the set.
+	my $host_pruning;
+	if ( defined( $self->{sets}{ $opts{set} }{host_pruning} ) ) {
+		$host_pruning = $self->{sets}{ $opts{set} }{host_pruning};
+	} else {
+		$host_pruning = $self->{host_pruning};
+	}
+	if ($host_pruning) {
+		my $groups;
+		if ( $opts{type} eq 'tshark' ) {
+			$groups = $self->_tshark_required_hosts( $opts{filter} );
+		} else {
+			$groups = $self->_bpf_required_hosts( $opts{filter} );
+		}
+		if ( defined($groups) ) {
+			my @kept;
+			my $unindexed = 0;
+			foreach my $pcap ( @{$to_check} ) {
+				my $hosts = $self->read_pcap_hosts( set => $opts{set}, pcap => $pcap );
+				if ( !defined($hosts) ) {
+					# no index, stale, or gone... can not prune safely, so keep it
+					$unindexed++;
+					push( @kept, $pcap );
+					next;
+				}
+
+				# keep the PCAP if any AND-group is fully present in its index
+				my %have  = map { $_ => 1 } @{$hosts};
+				my $match = 0;
+				foreach my $group ( @{$groups} ) {
+					my $all_present = 1;
+					foreach my $host ( @{$group} ) {
+						if ( !$have{$host} ) {
+							$all_present = 0;
+							last;
+						}
+					}
+					if ($all_present) {
+						$match = 1;
+						last;
+					}
+				} ## end foreach my $group ( @{$groups} )
+				if ($match) {
+					push( @kept, $pcap );
+				}
+				# else: no group is fully present, so no match is possible... skip
+			} ## end foreach my $pcap ( @{$to_check} )
+			$host_pruning = {
+				groups         => $groups,
+				candidates     => scalar( @{$to_check} ),
+				kept           => scalar(@kept),
+				pruned         => scalar( @{$to_check} ) - scalar(@kept),
+				unindexed_kept => $unindexed,
+			};
+			$self->verbose( 'info',
+					  'Host pruning: kept '
+					. $host_pruning->{kept} . '/'
+					. $host_pruning->{candidates}
+					. ' PCAPs ('
+					. $host_pruning->{unindexed_kept}
+					. ' kept as unindexed) via '
+					. join( ' or ', map { '( ' . join( ' and ', @{$_} ) . ' )' } @{$groups} ) );
+			$to_check = \@kept;
+		} else {
+			$host_pruning = undef;
+		}
+	} else {
+		$host_pruning = undef;
+	}
+
 	# The return hash and what will be used for the cache JSON
 	# req_end stuff set later
 	my $to_return = {
@@ -1356,6 +1452,7 @@ sub get_pcap_local {
 		req_start      => $req_start->strftime('%Y-%m-%dT%H:%M:%S%z'),
 		req_start_s    => $req_start->epoch,
 		ts_is_unixtime => $ts_is_unixtime,
+		host_pruning   => $host_pruning,
 	};
 
 	# note the cache ID if the cache file is named such that it will be
@@ -1499,6 +1596,240 @@ sub get_set_path {
 
 	return $self->{sets}{$set}{path};
 } ## end sub get_set_path
+
+# Internal helper that derives the IP host requirements of a BPF filter as a
+# set of AND-groups. It walks the same token stream as bpf2tshark, but instead
+# of translating it returns an array ref of groups, where each group is an
+# array ref of IP addresses. The semantics are OR-of-AND-groups: a packet can
+# only match the filter if, for at least one group, it involves EVERY host in
+# that group. When no such structure can be safely derived the return is undef,
+# meaning "do not prune".
+#
+# This mirrors BPF operator precedence, where 'and' binds tighter than 'or', so
+# a filter with no parens is naturally a disjunction of conjunctions. Each run
+# of host terms joined by 'and' becomes one group, and 'or' starts a new group.
+# For example:
+#
+#    host A                    -> [ [A] ]
+#    host A or host B          -> [ [A], [B] ]
+#    host A and host B         -> [ [A, B] ]
+#    host A or host B and host C -> [ [A], [B, C] ]
+#
+# This is the derivation behind host based PCAP pruning: keep a PCAP only when
+# its pcap_hosts index fully contains at least one group. A group with a host
+# missing from the index can not match anything in the PCAP, and if every group
+# has a host missing then the filter can not match at all and the PCAP can be
+# skipped before the expensive per PCAP tcpdump/tshark filtering. Requiring the
+# WHOLE group to be present, rather than just any one host, is what makes 'and'
+# handling strong: 'host A and host B' skips a PCAP that indexes A but not B.
+#
+# The reasoning is fragile, so anything that breaks it returns undef rather than
+# risk pruning a PCAP that could hold a match:
+#
+#    - not          :: negation turns a host term into "everything else", so
+#                      there is no longer a required host.
+#    - ( )          :: explicit grouping can override the and/or precedence this
+#                      flat walk assumes, so it is not safely analyzable here.
+#    - port/proto   :: a bare port/tcp/udp/icmp/ether term can match with no
+#                      host involved, so its group would have no requirement.
+#    - non IP host  :: hostnames and MAC addresses are not IP endpoints and so
+#                      are not represented in the pcap_hosts index.
+#
+# Only meaningful for BPF filters (type tcpdump or bpf2tshark). Native tshark
+# display filters are a different grammar and are not handled here.
+sub _bpf_required_hosts {
+	my ( $self, $bpf ) = @_;
+
+	if ( !defined($bpf) || $bpf eq '' ) {
+		return undef;
+	}
+
+	# match bpf2tshark's tokenization so ()/terms split cleanly
+	$bpf =~ s/\(/\ \(\ /g;
+	$bpf =~ s/\)/\ \)\ /g;
+	my @bpf_split = split( /[\ \t]+/, $bpf );
+
+	my @groups;             # completed AND-groups, each an array ref of hosts
+	my %current;            # hosts of the AND-group currently being built
+	my $have_current = 0;    # whether %current has accumulated any hosts yet
+	my @previous;
+	foreach my $item (@bpf_split) {
+		# skip empty tokens produced by leading/trailing whitespace
+		if ( $item eq '' ) {
+			next;
+		}
+
+		# anything that breaks the OR-of-AND-groups reasoning invalidates pruning
+		if ( $item eq 'not' || $item eq '(' || $item eq ')' ) {
+			return undef;
+		} elsif ( $item eq 'tcp' || $item eq 'udp' || $item eq 'icmp' || $item eq 'port' || $item eq 'ether' ) {
+			return undef;
+		}
+
+		# 'or' closes the current AND-group and starts a new one
+		elsif ( $item eq 'or' ) {
+			if ($have_current) {
+				push( @groups, [ sort( keys(%current) ) ] );
+			}
+			%current      = ();
+			$have_current = 0;
+			@previous     = ();
+		}
+
+		# 'and' stays within the current AND-group, just clearing host context
+		elsif ( $item eq 'and' ) {
+			@previous = ();
+		}
+
+		# src/dst/host introduce a host term, the address follows
+		elsif ( $item eq 'src' || $item eq 'dst' || $item eq 'host' ) {
+			push( @previous, $item );
+		}
+
+		# an address, but only if we are actually in a host term
+		elsif (@previous) {
+			if ( $item =~ /^\d+\.\d+\.\d+\.\d+$/ || ( $item =~ /^[0-9a-fA-F\:\.]+$/ && $item =~ /\:/ ) ) {
+				$current{$item} = 1;
+				$have_current   = 1;
+				@previous       = ();
+			} else {
+				# a hostname or otherwise not an IP literal, can not anchor
+				return undef;
+			}
+		}
+
+		# anything unrecognized is unsafe to reason about
+		else {
+			return undef;
+		}
+	} ## end foreach my $item (@bpf_split)
+
+	# close the final AND-group
+	if ($have_current) {
+		push( @groups, [ sort( keys(%current) ) ] );
+	}
+
+	if ( !@groups ) {
+		return undef;
+	}
+
+	return \@groups;
+} ## end sub _bpf_required_hosts
+
+# Internal helper that derives the IP host requirements of a native tshark
+# display filter, returning the same OR-of-AND-groups structure as
+# _bpf_required_hosts (see there for the semantics and how it drives pruning).
+# This is the tshark type counterpart, as native display filters are a
+# different grammar than BPF.
+#
+# It understands a conjunction/disjunction of IP host equality terms, where a
+# term is one of the following fields compared with == (or eq) to an IP literal:
+#
+#    ip.addr / ip.src / ip.dst          -> IPv4
+#    ipv6.addr / ipv6.src / ipv6.dst    -> IPv6
+#
+# && / and joins terms into the same AND-group, || / or starts a new group, and
+# as with BPF this mirrors operator precedence (&& binds tighter than ||) so a
+# filter with no parens is a disjunction of conjunctions.
+#
+# Anything outside that subset returns undef, meaning "do not prune":
+#
+#    - ! / not      :: negation turns a term into "everything else".
+#    - ( )          :: explicit grouping can override the &&/|| precedence this
+#                      flat walk assumes.
+#    - != / ne, or  :: any operator other than == / eq, so a term does not pin
+#      any other op     the packet to a specific host.
+#    - other fields :: a non IP host field (ports, protocols, eth.addr, ...)
+#                      would leave its group with no host requirement, and is
+#                      not represented in the pcap_hosts index anyway.
+#    - non IP value :: hostnames, CIDRs, and anything that is not a bare IPv4 or
+#                      IPv6 literal can not be matched against the index.
+sub _tshark_required_hosts {
+	my ( $self, $filter ) = @_;
+
+	if ( !defined($filter) || $filter eq '' ) {
+		return undef;
+	}
+
+	my %ip_fields = map { $_ => 1 } ( 'ip.addr', 'ip.src', 'ip.dst', 'ipv6.addr', 'ipv6.src', 'ipv6.dst' );
+
+	# space out the operators and parens so the filter tokenizes on whitespace.
+	# only == / && / || need to survive intact... every other operator just has
+	# to become some token the state machine below does not accept, so that
+	# unsupported syntax causes a safe bail rather than a bad prune. '!' is
+	# spaced last so that '!=' still yields a '!' token and is rejected.
+	$filter =~ s/\=\=/\ \=\=\ /g;
+	$filter =~ s/\&\&/\ \&\&\ /g;
+	$filter =~ s/\|\|/\ \|\|\ /g;
+	$filter =~ s/\(/\ \(\ /g;
+	$filter =~ s/\)/\ \)\ /g;
+	$filter =~ s/\!/\ \!\ /g;
+	my @tokens = grep { $_ ne '' } split( /[\ \t]+/, $filter );
+
+	my @groups;              # completed AND-groups, each an array ref of hosts
+	my %current;             # hosts of the AND-group currently being built
+	my $have_current = 0;    # whether %current has accumulated any hosts yet
+	my $expect       = 'field';    # position within the current field==value term
+	foreach my $token (@tokens) {
+		# grouping and negation can not be reasoned about with this flat walk
+		if ( $token eq '(' || $token eq ')' || $token eq '!' || $token eq 'not' ) {
+			return undef;
+		}
+
+		if ( $expect eq 'field' ) {
+			if ( $ip_fields{$token} ) {
+				$expect = 'op';
+			} else {
+				return undef;
+			}
+		} elsif ( $expect eq 'op' ) {
+			if ( $token eq '==' || $token eq 'eq' ) {
+				$expect = 'value';
+			} else {
+				return undef;
+			}
+		} elsif ( $expect eq 'value' ) {
+			if ( $token =~ /^\d+\.\d+\.\d+\.\d+$/ || ( $token =~ /^[0-9a-fA-F\:\.]+$/ && $token =~ /\:/ ) ) {
+				$current{$token} = 1;
+				$have_current    = 1;
+				$expect          = 'combinator';
+			} else {
+				return undef;
+			}
+		} elsif ( $expect eq 'combinator' ) {
+			if ( $token eq '&&' || $token eq 'and' ) {
+				# stay within the current AND-group
+				$expect = 'field';
+			} elsif ( $token eq '||' || $token eq 'or' ) {
+				# close the current AND-group and start a new one
+				if ($have_current) {
+					push( @groups, [ sort( keys(%current) ) ] );
+				}
+				%current      = ();
+				$have_current = 0;
+				$expect       = 'field';
+			} else {
+				return undef;
+			}
+		} ## end elsif ( $expect eq 'combinator')
+	} ## end foreach my $token (@tokens)
+
+	# the filter must end on a completed term
+	if ( $expect ne 'combinator' ) {
+		return undef;
+	}
+
+	# close the final AND-group
+	if ($have_current) {
+		push( @groups, [ sort( keys(%current) ) ] );
+	}
+
+	if ( !@groups ) {
+		return undef;
+	}
+
+	return \@groups;
+} ## end sub _tshark_required_hosts
 
 # Internal helper that parses the output of
 # 'tshark -n -q -z endpoints,ipv4 -z endpoints,ipv6' and returns a sorted,

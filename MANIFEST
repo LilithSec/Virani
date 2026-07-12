@@ -9,6 +9,8 @@ t/01-load.t
 t/02-get_sets.t
 t/10-cached.t
 t/20-pcap_hosts.t
+t/21-host_pruning.t
+t/30-client_build_query.t
 t/manifest.t
 t/pod-coverage.t
 t/pod.t

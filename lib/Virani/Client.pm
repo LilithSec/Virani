@@ -6,6 +6,7 @@ use warnings;
 use LWP::UserAgent;
 use HTTP::Request::Common;
 use File::Slurp;
+use URI::Escape qw(uri_escape);
 
 =head1 NAME
 
@@ -94,6 +95,26 @@ sub new {
 	return $self;
 }
 
+# Builds a "?k=v&k=v" query string from ordered key/value pairs, percent
+# encoding each VALUE so filters/sets/ids/types containing reserved characters
+# (& # = + %, spaces, IPv6 ':') can neither corrupt the query nor inject extra
+# parameters. Keys are static/trusted and passed through as-is. Pairs whose
+# value is undef are skipped, matching the "only append if defined" behavior of
+# the callers. The result is decoded transparently by the mojo-virani server
+# via $c->param, so this is wire compatible with older/newer servers.
+sub _build_query {
+	my ( $self, @pairs ) = @_;
+
+	my @parts;
+	while (@pairs) {
+		my ( $key, $value ) = ( shift(@pairs), shift(@pairs) );
+		next if ( !defined($value) );
+		push( @parts, $key . '=' . uri_escape($value) );
+	}
+
+	return '?' . join( '&', @parts );
+} ## end sub _build_query
+
 =head2 fetch
 
 Reaches out via HTTP or HTTPS and fetches the PCAP and JSON metadata.
@@ -166,20 +187,16 @@ sub fetch {
 		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
 	}
 
-	$opts{filter} =~ s/\ /\%20/g;
-
-	# put the url together
-	my $url = $self->{url} . '?start=' . $opts{start}->epoch . '&end=' . $opts{end}->epoch;
-	if (defined($opts{type})) {
-		$url = $url . '&type=' . $opts{type};
-	}
-	if ( defined( $self->{apikey} ) ) {
-		$url = $url . '&apikey=' . $self->{apikey};
-	}
-	if ( defined( $opts{set} ) ) {
-		$url = $url . '&set=' . $opts{set};
-	}
-	$url = $url . '&bpf=' . $opts{filter};
+	# put the url together, percent encoding each value so a filter/set/type
+	# containing reserved characters can not corrupt or inject query parameters
+	my $url = $self->{url} . $self->_build_query(
+		start  => $opts{start}->epoch,
+		end    => $opts{end}->epoch,
+		type   => $opts{type},
+		apikey => $self->{apikey},
+		set    => $opts{set},
+		bpf    => $opts{filter},
+	);
 
 	# get the PCAP
 	my $res;
@@ -238,10 +255,10 @@ sub get_sets {
 		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
 	}
 
-	my $url = $self->{url} . '?get_sets=1';
-	if ( defined( $self->{apikey} ) ) {
-		$url = $url . '&apikey=' . $self->{apikey};
-	}
+	my $url = $self->{url} . $self->_build_query(
+		get_sets => 1,
+		apikey   => $self->{apikey},
+	);
 
 	my $res;
 	eval { $res = $ua->request( GET $url); };
@@ -283,13 +300,11 @@ sub list_cached {
 		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
 	}
 
-	my $url = $self->{url} . '?list_cached=1';
-	if ( defined( $opts{set} ) ) {
-		$url = $url . '&set=' . $opts{set};
-	}
-	if ( defined( $self->{apikey} ) ) {
-		$url = $url . '&apikey=' . $self->{apikey};
-	}
+	my $url = $self->{url} . $self->_build_query(
+		list_cached => 1,
+		set         => $opts{set},
+		apikey      => $self->{apikey},
+	);
 
 	my $res;
 	eval { $res = $ua->request( GET $url); };
@@ -343,10 +358,10 @@ sub fetch_cached {
 		$ua->ssl_opts( verify_hostname => 0, SSL_verify_mode => 0 );
 	}
 
-	my $url = $self->{url} . '?cached=' . $opts{id};
-	if ( defined( $self->{apikey} ) ) {
-		$url = $url . '&apikey=' . $self->{apikey};
-	}
+	my $url = $self->{url} . $self->_build_query(
+		cached => $opts{id},
+		apikey => $self->{apikey},
+	);
 
 	# get the PCAP
 	if ( !$opts{meta_only} ) {
