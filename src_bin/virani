@@ -30,7 +30,7 @@ virani B<--cached> <id> [B<-w> <output>] [B<--meta>] [B<--config> <file>]
 
 virani B<-r> <remote> B<--cached> <id> [B<-w> <output>] [B<--meta>] [B<-a> <apikey>] [B<-k>]
 
-virani B<--update-pcap-hosts> [B<--set> <set>] [B<--config> <file>]
+virani B<--update-pcap-hosts> [B<--set> <set>] [B<--config> <file>] [B<-l>] [B<-q>]
 
 =head1 DESCRIPTION
 
@@ -132,11 +132,27 @@ With B<--cached>, only print the metadata JSON, skipping the PCAP.
 Update the PCAP hosts cache for a set, indexing what hosts are in each
 PCAP via tshark. B<--set> may be used to choose the set, otherwise the
 default set is used. A JSON summary of what was done is printed once
-done. B<-q> silences the progress narration, leaving just the JSON.
+done.
 
-Intended for being cronned on the box holding the PCAPs.
+B<-q> silences the progress narration and the summary, printing only
+errors... if any PCAPs failed to index, a JSON object with the set,
+failed, and failed_count keys is printed, otherwise nothing is. This
+keeps a cronned run quiet unless something actually went wrong.
+
+Intended for being cronned on the box holding the PCAPs. Combine with
+B<-l> so overlapping cron runs for the same set can't stack up.
 
 Local only. May not be used with B<-r>.
+
+=head2 -l
+
+Enable locking for B<--update-pcap-hosts> so more than one instance can't
+update the same set at a time. The lock is per set, so different sets may
+still be updated concurrently.
+
+Uses a PID file via L<Proc::PID::File>, stored under a 'locks' directory
+in the cache dir. If another instance for the same set is already running,
+it dies rather than starting a second update.
 
 =head2 --config <config>
 
@@ -185,9 +201,11 @@ use Virani;
 use TOML;
 use File::Slurp;
 use File::Copy 'cp';
+use File::Path qw(make_path);
 use Time::Piece::Guess;
 use Virani::Client;
 use JSON;
+use Proc::PID::File ();
 
 sub version {
 	print 'viarni v. ' . $Virani::VERSION . "\n";
@@ -229,6 +247,12 @@ sub help {
 --update-pcap-hosts
                   Update the PCAP hosts cache for a set. May be
                   used with --set. Local only.
+
+-l                Enable locking for --update-pcap-hosts so more than
+                  one instance can not update the same set at a time.
+
+-q                With --update-pcap-hosts, silence the narration and
+                  summary, printing only errors if any occurred.
 
 --config <config> Config file to use.
                   Default :: /usr/local/etc/virani.toml
@@ -278,6 +302,7 @@ my $list_cached = 0;
 my $cached_id;
 my $meta_only         = 0;
 my $update_pcap_hosts = 0;
+my $locking           = 0;
 Getopt::Long::Configure('no_ignore_case');
 Getopt::Long::Configure('bundling');
 GetOptions(
@@ -304,6 +329,7 @@ GetOptions(
 	'cached=s'          => \$cached_id,
 	'meta'              => \$meta_only,
 	'update-pcap-hosts' => \$update_pcap_hosts,
+	'l'                 => \$locking,
 );
 
 if ($help) {
@@ -435,11 +461,43 @@ if ( !$remote ) {
 	}
 
 	if ($update_pcap_hosts) {
+		# -l if asked for, so more than one instance can't update the same set at a time
+		if ($locking) {
+			my $lock_set = ( defined($set) && $set ne '' ) ? $set : $virani->get_default_set;
+			( my $lock_name = 'virani_update_pcap_hosts_' . $lock_set ) =~ s/[^\w\-]/_/g;
+			# keep the PID file under the cache dir instead of relying on /var/run being writable
+			my $lock_dir = $virani->get_cache . '/locks';
+			if ( !-d $lock_dir ) {
+				eval { make_path($lock_dir); };
+				if ( $@ || !-d $lock_dir ) {
+					die( 'Failed to create the lock dir,"' . $lock_dir . '"... ' . ( $@ // '' ) );
+				}
+			}
+			my $alive;
+			eval { $alive = Proc::PID::File->running( name => $lock_name, dir => $lock_dir ); };
+			if ($@) {
+				die( '-l specified and PID file check failed... ' . $@ );
+			}
+			if ($alive) {
+				die( 'Already running as ' . $alive );
+			}
+		} ## end if ($locking)
 		my $returned = $virani->update_pcap_hosts( set => $set );
 		my $json     = JSON->new->allow_nonref->pretty->canonical(1);
-		print $json->encode($returned);
+		if ( !$quiet ) {
+			print $json->encode($returned);
+		} elsif ( $returned->{failed_count} ) {
+			# -q: stay silent on success, but still report any PCAPs that failed to index
+			print $json->encode(
+				{
+					set          => $returned->{set},
+					failed       => $returned->{failed},
+					failed_count => $returned->{failed_count},
+				}
+			);
+		}
 		exit 0;
-	}
+	} ## end if ($update_pcap_hosts)
 
 	if ( defined($cached_id) ) {
 		if ($meta_only) {

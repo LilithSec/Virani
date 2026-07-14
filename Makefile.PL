@@ -39,6 +39,7 @@ my %WriteMakefileArgs = (
 		'HTTP::Request::Common'         => '0',
 		'URI::Escape'                   => '0',
 		'Time::Piece::Guess'            => '0.1.0',
+		'Proc::PID::File'               => '0',
 	},
 	dist       => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
 	clean      => { FILES    => 'Virani-*' },

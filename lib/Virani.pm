@@ -642,6 +642,20 @@ sub get_default_set {
 	return $self->{default_set};
 }
 
+=head2 get_cache
+
+Returns the path to the cache directory.
+
+    my $cache=$virani->get_cache;
+
+=cut
+
+sub get_cache {
+	my ($self) = @_;
+
+	return $self->{cache};
+}
+
 =head2 get_sets
 
 Returns a hash ref of the configured sets. The keys are the set
