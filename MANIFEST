@@ -4,6 +4,15 @@ lib/Virani/Client.pm
 Makefile.PL
 MANIFEST			This list of files
 README.md
+docs/index.md
+docs/architecture.md
+docs/install.md
+docs/configuration.md
+docs/usage.md
+docs/cache.md
+docs/host-pruning.md
+docs/security.md
+docs/examples.md
 t/00-load.t
 t/01-load.t
 t/02-get_sets.t
@@ -16,4 +25,7 @@ t/pod-coverage.t
 t/pod.t
 src_bin/virani
 src_bin/mojo-virani
-init/freebsd
+rc/README.md
+rc/freebsd/virani
+rc/systemd/virani.service
+rc/systemd/virani.sysusers.conf

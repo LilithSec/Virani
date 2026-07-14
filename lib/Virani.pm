@@ -2329,13 +2329,14 @@ default as below.
     [sets.default]
     path='/var/log/daemonlogger'
 
-If you want to use 'init/freebsd' to start mojo-virani, you just need to copy
+If you want to use 'rc/freebsd/virani' to start mojo-virani, you just need to copy
 it to '/usr/local/etc/rc.d/virani' and add the following or the like to '/etc/rc.conf'.
 
     virani_enable="YES"
     virani_flags="daemon -m production -l http://127.0.0.1:8080 -l http://192.168.14.1:8080"
 
-See the script for information on the various possible config args for it.
+See the script for information on the various possible config args for it. A
+systemd unit for Linux ships at 'rc/systemd/virani.service'; see 'rc/README.md'.
 
 =head1 AUTHOR
 

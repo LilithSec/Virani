@@ -1,0 +1,74 @@
+[Unit]
+Description=Virani remote PCAP fetch/search service (mojo-virani)
+Documentation=man:mojo-virani
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=virani
+Group=virani
+
+# mojo-virani reads its configuration (sets, allowed_subnets, apikey, cache,
+# ...) from /usr/local/etc/virani.toml. Only the listen URL is given here.
+Environment=VIRANI_LISTEN=http://*:8080
+# ...or serve HTTPS directly (requires IO::Socket::SSL; cert+key readable by
+# the service user and on a system path — ProtectHome= below hides home
+# directories). systemd treats the whole value as one argument, so the "&"
+# needs no escaping:
+# Environment=VIRANI_LISTEN=https://*:8443?cert=/usr/local/etc/virani/tls/server.crt&key=/usr/local/etc/virani/tls/server.key
+
+# Optional override for the variable above.
+EnvironmentFile=-/usr/local/etc/virani/virani.env
+
+# Adjust the path if make install placed the scripts elsewhere (e.g. /usr/bin).
+# mojo-virani's "daemon" server handles one request at a time; a long carve
+# blocks other requests. To serve concurrent requests, use the preforking
+# server instead:
+#   ExecStart=/usr/local/bin/mojo-virani prefork -m production -w 4 -l ${VIRANI_LISTEN}
+ExecStart=/usr/local/bin/mojo-virani daemon -m production -l ${VIRANI_LISTEN}
+
+Restart=on-failure
+RestartSec=5
+
+# /var/cache/virani — the search cache, created at start and writable by the
+# service user. If "cache" in virani.toml points elsewhere, add a matching
+# ReadWritePaths= line.
+CacheDirectory=virani
+CacheDirectoryMode=0750
+
+# --- Hardening ------------------------------------------------------------
+# The cache is the only local state; ProtectSystem=strict keeps the rest of
+# the filesystem read-only (reading the PCAP sets still works). The service
+# user must be able to read every set path — note that ProtectHome= hides
+# home directories from the sandbox; drop it if your sets live under /home.
+# The carving itself execs tcpdump/tshark/mergecap, which @system-service
+# permits.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+# To bind a privileged port (e.g. :443) directly instead of via a proxy:
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+# CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

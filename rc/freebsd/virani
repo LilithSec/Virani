@@ -1,0 +1,90 @@
+#!/bin/sh
+#
+# PROVIDE: virani
+# REQUIRE: LOGIN NETWORKING
+# KEYWORD: shutdown
+#
+# mojo-virani, the Virani HTTP face — remote fetching/searching of PCAPs.
+# Configuration (sets, allowed_subnets, apikey, cache, ...) is read from
+# /usr/local/etc/virani.toml; the listen addresses go in virani_flags.
+#
+# Add the following to /etc/rc.conf (or /etc/rc.conf.d/virani) to enable
+# and configure this service:
+#
+#   virani_enable="YES"
+#   #virani_user="www"       # service user; needs read access to every set
+#                            # path and write access to the cache dir
+#   #virani_flags="daemon -m production -l http://*:8080"
+#                            # the arguments handed to mojo-virani, which is
+#                            # where the listen addresses go, e.g.
+#                            #   "daemon -m production -l http://127.0.0.1:8080 -l http://192.168.14.1:8080"
+#                            # mojo-virani's "daemon" server handles one
+#                            # request at a time; to serve concurrent requests
+#                            # use the preforking server instead:
+#                            #   "prefork -m production -w 4 -l http://*:8080"
+#   #virani_cache="/var/cache/virani"            # cache dir, created on start
+#   #virani_program="/usr/local/bin/mojo-virani"
+#   #virani_output=""        # write stdout/stderr to this file instead of
+#                            # syslog, e.g. "/var/log/virani/virani.out"
+#
+# Mind what you listen on; see docs/security.md before exposing this or
+# fronting it with a reverse proxy (the IP allow-list sees the address of
+# whoever connects, which behind a proxy is the proxy).
+
+. /etc/rc.subr
+
+name="virani"
+desc="Virani remote PCAP fetch/search service"
+rcvar="${name}_enable"
+
+load_rc_config $name
+
+: ${virani_enable:="NO"}
+: ${virani_user:="www"}
+: ${virani_group:="${virani_user}"}
+: ${virani_flags:="daemon -m production -l http://*:8080"}
+: ${virani_cache:="/var/cache/virani"}
+: ${virani_program:="/usr/local/bin/mojo-virani"}
+: ${virani_output:=""}
+
+# virani_flags are mojo-virani's arguments, not daemon(8)'s; keep rc.subr
+# from inserting them after the supervisor command.
+virani_args="${virani_flags}"
+virani_flags=""
+
+rundir="/var/run/${name}"
+pidfile="${rundir}/${name}.pid"
+
+# daemon(8) supervises mojo-virani, restarts it if it dies (5 s delay), and
+# routes its output to syslog (or to virani_output when set). Virani itself
+# already logs its own messages to syslog.
+if [ -n "${virani_output}" ]; then
+	virani_log="-o ${virani_output}"
+else
+	virani_log="-S"
+fi
+
+command="/usr/sbin/daemon"
+procname="/usr/sbin/daemon"
+command_args="${virani_log} -t ${name} -R 5 -P ${pidfile} ${virani_program} ${virani_args}"
+
+start_precmd="${name}_precmd"
+
+virani_precmd()
+{
+	# Run directory for the pid file and the cache dir, writable by the
+	# service user.
+	install -d -o "${virani_user}" -g "${virani_group}" -m 0755 "${rundir}"
+	install -d -o "${virani_user}" -g "${virani_group}" -m 0750 \
+		"${virani_cache}"
+
+	# Only create the log file's directory if it does not exist yet, so an
+	# output file under a shared directory does not get re-owned.
+	if [ -n "${virani_output}" ] && [ ! -d "${virani_output%/*}" ]; then
+		install -d -o "${virani_user}" -g "${virani_group}" -m 0755 \
+			"${virani_output%/*}"
+	fi
+	return 0
+}
+
+run_rc_command "$1"
