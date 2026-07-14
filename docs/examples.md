@@ -1,7 +1,7 @@
 # Examples
 
 Worked scenarios to copy from. Paths assume the defaults; adjust to taste.
-Mind [security.md](security.md) before any of these serve real traffic.
+Mind [security](security.md) before any of these serve real traffic.
 
 ## daemonlogger on FreeBSD, searched locally
 
@@ -83,7 +83,7 @@ virani -t tshark -s now-10m -e now 'ip.addr == 10.9.9.9 && tls'
 ```
 
 Both are significantly slower than tcpdump; setting `type` per set (see
-[configuration.md](configuration.md)) reserves them for the hoards that
+[configuration](configuration.md)) reserves them for the hoards that
 need them.
 
 ## A filter too big for a command line
@@ -157,7 +157,7 @@ virani --cached default-tcpdump-1752376200-1752377100-<md5> -w again.pcap
 virani --nc -s 2026-07-13T03:10:00 -e 2026-07-13T03:25:00 host 192.0.2.10   # force a regen
 ```
 
-The same works remotely with `-r sensor1` — see [cache.md](cache.md).
+The same works remotely with `-r sensor1` — see [cache](cache.md).
 
 ## Speeding up host hunts with the index
 
@@ -178,4 +178,4 @@ host_pruning = true
 Now `virani -s now-24h -e now host 192.0.2.10` only runs tcpdump over the
 PCAPs that actually saw `192.0.2.10`, instead of a day's worth of hoard.
 The metadata's `host_pruning` key shows what was skipped. Mind the caveats
-in [host-pruning.md](host-pruning.md) before leaning on it.
+in [host-pruning](host-pruning.md) before leaning on it.

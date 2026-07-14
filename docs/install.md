@@ -81,7 +81,7 @@ cpanm Virani
 
 ## First run
 
-Write a config (see [configuration.md](configuration.md)) pointing a set at
+Write a config (see [configuration](configuration.md)) pointing a set at
 wherever your FPC writes its PCAPs, then ask for something...
 
 ```shell
@@ -99,7 +99,7 @@ Only the HTTP face needs a service; local `virani` use needs nothing
 running. `make install` does not install the service files, so copy them
 into place yourself from `rc/` in the source tree — `rc/freebsd/` holds the
 rc.d script, `rc/systemd/` the systemd unit; full walkthroughs for both live
-in [rc/README.md](../rc/README.md).
+in [rc/README](../rc/README.md).
 
 ### FreeBSD rc.d
 
@@ -117,7 +117,7 @@ The rc.conf knobs are documented at the top of the script; the flags are
 the arguments handed to mojo-virani, which is where the listen addresses
 go. The user it runs as needs read access to every set path and write
 access to the cache dir. Mind what you listen on; see
-[security.md](security.md).
+[security](security.md).
 
 ### Linux systemd
 
@@ -134,7 +134,7 @@ systemctl enable --now virani.service
 
 Grant the `virani` user read access to the set paths, and set the listen
 URL via `VIRANI_LISTEN` in the unit or in
-`/usr/local/etc/virani/virani.env` — see [rc/README.md](../rc/README.md)
+`/usr/local/etc/virani/virani.env` — see [rc/README](../rc/README.md)
 for the details.
 
 ### Elsewhere
@@ -149,5 +149,5 @@ mojo-virani daemon -m production -l http://127.0.0.1:8080
 ...under your supervisor of choice, or via hypnotoad, or copied into a CGI
 bin, or as fastCGI with a frontend proxying to it. The one caution on
 proxying: the IP allow-list sees the address of whoever connects, which
-behind a proxy is the proxy — see [security.md](security.md) before fronting
+behind a proxy is the proxy — see [security](security.md) before fronting
 it with one.

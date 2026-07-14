@@ -11,7 +11,7 @@ defines one PCAP hoard to read, named for the hash — the hash at
 | key                  | default                                                    | what                                                              |
 |----------------------|------------------------------------------------------------|-------------------------------------------------------------------|
 | `default_set`        | `"default"`                                                | the set used when a request names none                            |
-| `cache`              | `/var/cache/virani`                                        | where answers and the hosts index are kept — see [cache.md](cache.md) |
+| `cache`              | `/var/cache/virani`                                        | where answers and the hosts index are kept — see [cache](cache.md) |
 | `allowed_subnets`    | `["192.168.0.0/16", "127.0.0.1/8", "::1/127", "172.16.0.0/12"]` | subnets allowed to talk to mojo-virani                       |
 | `auth_by_IP_only`    | `true`                                                     | if true, mojo-virani never checks the API key                    |
 | `apikey`             | (none)                                                     | the API key mojo-virani requires when `auth_by_IP_only` is false |
@@ -22,13 +22,13 @@ defines one PCAP hoard to read, named for the hash — the hash at
 | `ts_is_unixtime`     | `true`                                                     | the captured timestamp is epoch seconds as-is                    |
 | `pcap_glob`          | `"*.pcap*"`                                                | the filename glob PCAPs must match                               |
 | `pcap_hosts_min_age` | `120`                                                      | seconds a PCAP must sit unmodified before the hosts index will take it |
-| `host_pruning`       | `false`                                                    | use the hosts index to skip PCAPs that can not match — see [host-pruning.md](host-pruning.md) |
+| `host_pruning`       | `false`                                                    | use the hosts index to skip PCAPs that can not match — see [host-pruning](host-pruning.md) |
 | `verbose`            | `true`                                                     | narrate what is being done                                       |
 | `verbose_to_syslog`  | `false`                                                    | narrate to syslog instead of stdout (mojo-virani turns this on itself) |
 
 `allowed_subnets`, `auth_by_IP_only`, and `apikey` only matter for
 mojo-virani; local `virani` use never consults them. See
-[security.md](security.md) for how the gate works.
+[security](security.md) for how the gate works.
 
 ## Set settings
 

@@ -42,7 +42,7 @@ virani --cached wan-tcpdump-1752400000-1752403600-9a0364b9e99bb480dd25e1f0284c85
 
 All three work identically against a remote with `-r`, and over HTTP as
 `list_cached=1` and `cached=<id>` (plus `get_meta=1`) — see
-[usage.md](usage.md). A listing entry carries the ID, set, type, window
+[usage](usage.md). A listing entry carries the ID, set, type, window
 (`start_s`/`end_s`), when it was generated, `has_pcap`, and the filter,
 final size, and generation time from the metadata.
 
@@ -61,7 +61,7 @@ The `.json` is the full accounting of the search, and the same hash
 | `success_count`              | the ones that could                                            |
 | `total_size`, `success_size`, `failed_size`, `tmp_size`, `final_size` | bytes in, bytes through, bytes out |
 | `merge_error`                | the mergecap error if merging failed, else null                |
-| `host_pruning`               | pruning stats when it ran — see [host-pruning.md](host-pruning.md) |
+| `host_pruning`               | pruning stats when it ran — see [host-pruning](host-pruning.md) |
 | `path`                       | where the result sits... null if nothing could be generated    |
 | `cache_id`                   | the ID for refetching it... null if it bypassed the cache      |
 | `req_start`, `req_end`, `req_time` | when the work ran and how many seconds it took           |
@@ -76,7 +76,7 @@ lost. `merge_error` set, or `path` null, means the answer itself is suspect.
 
 Virani never prunes the cache — every answer stays until something else
 removes it. The cached PCAPs are carved traffic and exactly as sensitive as
-the hoard they came from (see [security.md](security.md)), so treat the dir
+the hoard they came from (see [security](security.md)), so treat the dir
 accordingly and sweep it on whatever schedule fits...
 
 ```sh
@@ -86,4 +86,4 @@ find /var/cache/virani -maxdepth 1 -type f -atime +14 -delete
 
 The `pcap_hosts/` subdirectory is the hosts index, not cached answers — it
 prunes itself as PCAPs rotate away and is covered in
-[host-pruning.md](host-pruning.md).
+[host-pruning](host-pruning.md).

@@ -17,7 +17,7 @@ was encrypted end to end. Consequences...
 - **The cache is a second hoard.** `/var/cache/virani` accumulates the
   carved results of every past search, plus metadata naming the filters and
   windows people cared about. Guard it like the set paths, and remember it
-  never prunes itself — see [cache.md](cache.md).
+  never prunes itself — see [cache](cache.md).
 - **The hosts index is a map.** `pcap_hosts/` lists every IP endpoint seen
   per PCAP — far less than the packets, but a tidy reconnaissance summary
   of your network all the same.

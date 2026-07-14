@@ -22,35 +22,35 @@ She serves the whole household.
 [Lamashtu](https://github.com/LilithSec/Lamashtu) remembers, and
 [Lilith](https://github.com/LilithSec/Lilith) knows — and when Lilith wants
 the packets behind an alert in her annals, it is Virani she sends to fetch
-them. See [architecture.md](architecture.md) for how she relates.
+them. See [architecture](architecture.md) for how she relates.
 
-- [architecture.md](architecture.md) :: the one library and its two faces,
+- [architecture](architecture.md) :: the one library and its two faces,
   how a time window becomes a capture, the filter types, and where Virani
   sits in the pantheon
 
-- [install.md](install.md) :: dependencies in detail, per-OS install, and
+- [install](install.md) :: dependencies in detail, per-OS install, and
   running mojo-virani at boot
 
-- [configuration.md](configuration.md) :: the `virani.toml` reference, sets
+- [configuration](configuration.md) :: the `virani.toml` reference, sets
   and their timestamp regexes, and the remote configs under `virani.d/`
 
-- [usage.md](usage.md) :: the `virani` CLI, time formats, remote fetching,
+- [usage](usage.md) :: the `virani` CLI, time formats, remote fetching,
   and the mojo-virani HTTP parameters
 
-- [cache.md](cache.md) :: cached searches — the cache IDs, the metadata
+- [cache](cache.md) :: cached searches — the cache IDs, the metadata
   JSON, and listing and refetching past answers
 
-- [host-pruning.md](host-pruning.md) :: the PCAP hosts index and how it lets
+- [host-pruning](host-pruning.md) :: the PCAP hosts index and how it lets
   host filters skip PCAPs that can not possibly match
 
-- [security.md](security.md) :: the heavy part — the hoard is raw traffic,
+- [security](security.md) :: the heavy part — the hoard is raw traffic,
   and mojo-virani is a window onto it
 
-- [examples.md](examples.md) :: copy-paste scenarios
+- [examples](examples.md) :: copy-paste scenarios
 
 Also...
 
-- `perldoc Virani`
-- `perldoc Virani::Client`
-- `perldoc virani`
-- `perldoc mojo-virani`
+- [Virani](https://metacpan.org/pod/Virani)
+- [Virani::Client](https://metacpan.org/pod/Virani::Client)
+- [virani](https://metacpan.org/dist/Virani/view/bin/virani)
+- [mojo-virani](https://metacpan.org/dist/Virani/view/bin/mojo-virani)

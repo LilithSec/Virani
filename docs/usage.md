@@ -68,13 +68,13 @@ on top of the configured `padding`.
 
 Every search writes the PCAP to `-w` and leaves the full accounting in the
 cache metadata; `--list-cached` and `--cached` read them back later — see
-[cache.md](cache.md).
+[cache](cache.md).
 
 ## Asking remotely
 
 `-r` turns the same CLI into a client of a remote mojo-virani. It takes a
 URL directly or the name of a config under `virani.d/` (see
-[configuration.md](configuration.md))...
+[configuration](configuration.md))...
 
 ```shell
 virani -r https://sensor1.example.com:8080/ -s now-1h -e now port 53
@@ -98,7 +98,7 @@ then the file. For HTTPS, `-k` disables cert verification.
 
 mojo-virani answers GET on any path, driven entirely by query parameters.
 Every request passes the IP allow-list (and the API key, when
-`auth_by_IP_only` is false) first — see [security.md](security.md).
+`auth_by_IP_only` is false) first — see [security](security.md).
 
 | parameter       | what                                                             |
 |-----------------|-------------------------------------------------------------------|
@@ -156,5 +156,5 @@ my $vc = Virani::Client->new( url => 'https://sensor1.example.com:8080/' );
 $vc->fetch( start => $start_tp, end => $end_tp, filter => 'port 53', file => 'out.pcap' );
 ```
 
-`perldoc Virani` and `perldoc Virani::Client` carry the full reference,
+[Virani](https://metacpan.org/pod/Virani) and [Virani::Client](https://metacpan.org/pod/Virani::Client) carry the full reference,
 including every key of the returned metadata.

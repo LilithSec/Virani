@@ -30,11 +30,11 @@ carry questions to it...
   HTTP. Runnable as a daemon (`mojo-virani daemon -m production -l
   http://<ip>:<port>`), as a CGI script, or as fastCGI. Gated by
   `allowed_subnets` and optionally an API key — see
-  [security.md](security.md).
+  [security](security.md).
 
 The two ends meet only at HTTP; the wire protocol is just query parameters
 and a PCAP (or JSON) coming back. Anything that can speak HTTP can ask — see
-[usage.md](usage.md) for the parameters.
+[usage](usage.md) for the parameters.
 
 ## Sets
 
@@ -42,7 +42,7 @@ A set is one PCAP hoard: a directory some full packet capture writes into,
 named by a `[sets.<name>]` hash in the config. Virani never writes there —
 she is the reader, not the keeper. Each set carries its own timestamp regex,
 filter type, padding, and worker count where they differ from the global
-ones; see [configuration.md](configuration.md).
+ones; see [configuration](configuration.md).
 
 The one hard requirement on a set is that the PCAP **filenames carry the
 epoch time**, because that is how Virani time-ranges her search without
@@ -62,7 +62,7 @@ Inside `get_pcap_local`, a question runs the gauntlet...
    the unpadded start and end epochs, and the MD5 of the cleaned filter. If
    both the PCAP and its metadata JSON already sit in the cache, that answer
    is returned as-is — hardlinked (or copied) to the output file if one was
-   asked for. See [cache.md](cache.md).
+   asked for. See [cache](cache.md).
 3. **Pad.** `padding` seconds (default 5) are subtracted from the start and
    added to the end, so a packet right on the edge is not lost to rotation
    timing.
@@ -75,7 +75,7 @@ Inside `get_pcap_local`, a question runs the gauntlet...
 5. **Prune.** With `host_pruning` on and a filter that requires specific IP
    hosts, PCAPs whose indexed host lists rule out a match are dropped before
    any real work is spent on them. Unindexed PCAPs are always kept. See
-   [host-pruning.md](host-pruning.md).
+   [host-pruning](host-pruning.md).
 6. **Filter.** Each surviving PCAP is run through `tcpdump -r <pcap> -w
    <tmp> <filter>` (or tshark, per the type) into its own tmp file,
    `workers` of them in parallel via Parallel::ForkManager. A PCAP that
